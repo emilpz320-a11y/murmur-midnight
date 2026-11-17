@@ -1,0 +1,60 @@
+name: compile-and-test
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'contract/managed/**'
+      - 'compile.log'
+      - 'test.log'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Compact compiler
+        uses: midnightntwrk/setup-compact-action@836895c8fffbbea6bd986af2b17e8941ff29d1f8
+        with:
+          compact-version: '0.36.0'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Compile contract
+        id: compile
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          rm -rf contract/managed/murmur
+          compact compile contract/murmur.compact contract/managed/murmur 2>&1 | tee compile.log
+
+      - name: Install and test
+        id: test
+        if: steps.compile.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm install --no-audit --no-fund
+          npx vitest run 2>&1 | tee test.log
+
+      - name: Publish compiler output and logs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f compile.log contract/managed || true
+          [ -f test.log ] && git add -f test.log || true
+          git commit -m "ci: compiler output and logs [skip ci]" || echo "nothing to commit"
+          git push
+
+      - name: Fail if compile or tests failed
+        if: steps.compile.outcome != 'success' || steps.test.outcome != 'success'
+        run: exit 1

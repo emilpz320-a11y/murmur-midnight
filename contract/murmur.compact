@@ -1,0 +1,147 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// Murmur: anonymous, verified feedback for a team.
+//
+// The admin enrols members by a public key derived from each member's secret.
+// A member posts a report by proving, in zero knowledge, that their key is a
+// leaf of the members Merkle tree, without revealing which leaf. Each member
+// can post once per round (a round-scoped nullifier), endorse each report once
+// (a report-scoped nullifier), and follow up on their own reports through an
+// author tag that only they can reproduce. Nothing on the public ledger links
+// a report, an endorsement or a follow-up to a member key, or two reports to
+// each other.
+
+pragma language_version 0.28;
+
+import CompactStandardLibrary;
+
+export enum Status { OPEN, ACKNOWLEDGED, RESOLVED }
+
+export sealed ledger adminPk: Bytes<32>;
+
+// Enrolment is public: the admin publishes each member key.
+export ledger members: MerkleTree<10, Bytes<32>>;
+export ledger memberKeys: Set<Bytes<32>>;
+export ledger memberCount: Counter;
+
+// Rounds bound how often a member can post (once per round).
+export ledger round: Counter;
+
+// Reports and what happened to them. Keys are report ids 0, 1, 2, ...
+export ledger reportCount: Counter;
+export ledger reports: Map<Uint<64>, Opaque<"string">>;
+export ledger reportRound: Map<Uint<64>, Uint<64>>;
+export ledger authorTags: Map<Uint<64>, Bytes<32>>;
+export ledger statuses: Map<Uint<64>, Status>;
+export ledger endorsements: Map<Uint<64>, Uint<64>>;
+export ledger followUps: Map<Uint<64>, Opaque<"string">>;
+export ledger replies: Map<Uint<64>, Opaque<"string">>;
+
+// Spent post and endorsement nullifiers.
+export ledger nullifiers: Set<Bytes<32>>;
+
+// The caller's secret, from their private state. Never written to the ledger.
+witness secretKey(): Bytes<32>;
+// The Merkle path of a member key in the members tree, found off-chain.
+witness memberPath(pk: Bytes<32>): MerkleTreePath<10, Bytes<32>>;
+
+constructor() {
+  adminPk = disclose(adminKey(secretKey()));
+}
+
+export pure circuit adminKey(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "murmur:admin"), sk]);
+}
+
+export pure circuit memberKey(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "murmur:member"), sk]);
+}
+
+// One per member per round in this contract instance.
+export pure circuit postNullifier(sk: Bytes<32>, rnd: Bytes<32>, instance: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<4, Bytes<32>>>([pad(32, "murmur:post"), sk, rnd, instance]);
+}
+
+// One per member per report in this contract instance.
+export pure circuit endorseNullifier(sk: Bytes<32>, id: Bytes<32>, instance: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<4, Bytes<32>>>([pad(32, "murmur:endorse"), sk, id, instance]);
+}
+
+// Lets the author, and only the author, prove a report is theirs later.
+export pure circuit authorTag(sk: Bytes<32>, id: Bytes<32>, instance: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<4, Bytes<32>>>([pad(32, "murmur:author"), sk, id, instance]);
+}
+
+circuit requireAdmin(): [] {
+  assert(disclose(adminKey(secretKey())) == adminPk, "Only the admin can do this");
+}
+
+// Proves the caller's member key is in the tree without revealing which leaf.
+circuit requireMember(sk: Bytes<32>): [] {
+  const path = memberPath(memberKey(sk));
+  assert(disclose(path.leaf == memberKey(sk)), "Path is not for this member");
+  assert(members.checkRoot(disclose(merkleTreePathRoot<10, Bytes<32>>(path))), "Not a member");
+}
+
+export circuit enrol(pk: Bytes<32>): [] {
+  requireAdmin();
+  const k = disclose(pk);
+  assert(!memberKeys.member(k), "Member already enrolled");
+  assert(memberCount.read() < 1024, "Member list is full");
+  memberKeys.insert(k);
+  members.insert(k);
+  memberCount.increment(1);
+}
+
+export circuit nextRound(): [] {
+  requireAdmin();
+  round.increment(1);
+}
+
+export circuit post(text: Opaque<"string">): Uint<64> {
+  const sk = secretKey();
+  requireMember(sk);
+  const instance = kernel.self().bytes;
+  const rnd = round.read();
+  const n = disclose(postNullifier(sk, rnd as Field as Bytes<32>, instance));
+  assert(!nullifiers.member(n), "Already posted this round");
+  nullifiers.insert(n);
+  const id = reportCount.read();
+  reports.insert(id, disclose(text));
+  reportRound.insert(id, rnd);
+  authorTags.insert(id, disclose(authorTag(sk, id as Field as Bytes<32>, instance)));
+  statuses.insert(id, Status.OPEN);
+  endorsements.insert(id, 0);
+  reportCount.increment(1);
+  return id;
+}
+
+export circuit endorse(id: Uint<64>): [] {
+  const sk = secretKey();
+  requireMember(sk);
+  const i = disclose(id);
+  assert(reports.member(i), "No such report");
+  const n = disclose(endorseNullifier(sk, i as Field as Bytes<32>, kernel.self().bytes));
+  assert(!nullifiers.member(n), "Already endorsed this report");
+  nullifiers.insert(n);
+  endorsements.insert(i, (endorsements.lookup(i) + 1) as Uint<64>);
+}
+
+export circuit followUp(id: Uint<64>, text: Opaque<"string">): [] {
+  const sk = secretKey();
+  const i = disclose(id);
+  assert(reports.member(i), "No such report");
+  assert(
+    disclose(authorTags.lookup(i) == authorTag(sk, i as Field as Bytes<32>, kernel.self().bytes)),
+    "Only the author can follow up"
+  );
+  followUps.insert(i, disclose(text));
+}
+
+export circuit respond(id: Uint<64>, status: Status, text: Opaque<"string">): [] {
+  requireAdmin();
+  const i = disclose(id);
+  assert(reports.member(i), "No such report");
+  statuses.insert(i, disclose(status));
+  replies.insert(i, disclose(text));
+}
