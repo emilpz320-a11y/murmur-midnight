@@ -5,7 +5,7 @@
 // action calls the real compiled circuit with that person's private state.
 import { Sim, collectPublicBytes } from '../test/sim.js';
 import { Contract, ledger, pureCircuits, Status } from '../../contract/managed/murmur/contract/index.js';
-import { createMurmurPrivateState, witnesses } from '../../contract/witnesses.js';
+import { createMurmurPrivateState, type MurmurPrivateState, witnesses } from '../../contract/witnesses.js';
 
 export { Status };
 
@@ -16,6 +16,8 @@ export interface Person {
   name: string;
   role: string;
   secretKey: Uint8Array;
+  /** This person's private state: lives on their device only. */
+  privateState: MurmurPrivateState;
 }
 
 export interface Report {
@@ -50,12 +52,16 @@ export class Board {
   private sim!: MurmurSim;
 
   private constructor() {
+    const person = (id: PersonId, name: string, role: string): Person => {
+      const secretKey = newKey();
+      return { id, name, role, secretKey, privateState: createMurmurPrivateState(secretKey) };
+    };
     this.people = {
-      admin: { id: 'admin', name: 'Morgan', role: 'admin', secretKey: newKey() },
-      ana: { id: 'ana', name: 'Ana', role: 'member', secretKey: newKey() },
-      ben: { id: 'ben', name: 'Ben', role: 'member', secretKey: newKey() },
-      cleo: { id: 'cleo', name: 'Cleo', role: 'member', secretKey: newKey() },
-      outsider: { id: 'outsider', name: 'Dex', role: 'not enrolled', secretKey: newKey() },
+      admin: person('admin', 'Morgan', 'admin'),
+      ana: person('ana', 'Ana', 'member'),
+      ben: person('ben', 'Ben', 'member'),
+      cleo: person('cleo', 'Cleo', 'member'),
+      outsider: person('outsider', 'Dex', 'not enrolled'),
     };
   }
 
@@ -76,9 +82,10 @@ export class Board {
 
   private async run<T>(p: PersonId, action: string, fn: () => Promise<T>, detail: (r: T) => string): Promise<boolean> {
     const who = this.people[p].name;
-    this.sim.privateState = createMurmurPrivateState(this.people[p].secretKey);
+    this.sim.privateState = this.people[p].privateState;
     try {
       const r = await fn();
+      this.people[p].privateState = this.sim.privateState;
       this.log.unshift({ ok: true, who, action, detail: detail(r) });
       return true;
     } catch (e) {
@@ -111,6 +118,12 @@ export class Board {
 
   respond(id: bigint, status: Status, text: string, by: PersonId = 'admin') {
     return this.run(by, `respond #${id}`, () => this.sim.call('respond', id, status, text), () => `#${id} marked ${Status[status].toLowerCase()}`);
+  }
+
+  /** What only this person's device knows: the reports they wrote and endorsed. */
+  privateView(p: PersonId): { authored: readonly bigint[]; endorsed: readonly bigint[] } {
+    const { authored, endorsed } = this.people[p].privateState;
+    return { authored, endorsed };
   }
 
   get round(): bigint {

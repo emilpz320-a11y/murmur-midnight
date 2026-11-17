@@ -142,7 +142,7 @@ describe('Murmur: follow-ups and replies', () => {
 });
 
 describe('Murmur: private state', () => {
-  it('records a post only in the author's private state', async () => {
+  it("records a post only in the author's private state", async () => {
     const { sim, members } = await setup(2);
     await as(sim, members[0]).call('post', 'mine');
     expect(walletOf(members[0]).authored).toEqual([0n]);

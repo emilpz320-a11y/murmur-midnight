@@ -36,10 +36,19 @@ function renderCompose() {
     <h2>Post as ${esc(p.name)} · round ${board.round}</h2>
     <textarea id="text" maxlength="400" placeholder="What should the team know? Members post anonymously; one post per member per round."></textarea>
     <div class="row"><button class="act primary" data-do="post">Post anonymously</button>
-    <span class="muted">Your secret proves membership in zero knowledge; the board never learns which member you are.</span></div>`;
+    <span class="muted">Your secret proves membership in zero knowledge; the board never learns which member you are.</span></div>
+    <div class="private"><b>Only on ${esc(p.name)}'s device</b> (private state, never on chain):
+      ${privateLine(me)}</div>`;
+}
+
+function privateLine(p: PersonId): string {
+  const v = board.privateView(p);
+  const list = (ids: readonly bigint[]) => (ids.length ? ids.map((i) => `#${i}`).join(', ') : 'none');
+  return `wrote ${list(v.authored)} · endorsed ${list(v.endorsed)}`;
 }
 
 function renderReports() {
+  const mine = board.privateView(me);
   const reports = board.reports();
   if (reports.length === 0) {
     $('reports').innerHTML = '<p class="empty">No reports yet. Enrol members, then post as one of them.</p>';
@@ -50,13 +59,14 @@ function renderReports() {
       (r) => `
       <article class="report">
         <div class="meta"><b>#${r.id}</b><span class="badge s${r.status}">${STATUS[r.status]}</span>
+          ${mine.authored.includes(r.id) ? '<span class="badge mine">yours (only you can see this)</span>' : ''}
           <span>round ${r.round}</span><span>${r.endorsements} endorsement(s)</span>
           <span class="mono" title="author tag: only the author can reproduce it">tag ${r.authorTag}</span></div>
         <p class="text">${esc(r.text)}</p>
         ${r.followUp ? `<div class="note"><b>Author follow-up:</b> ${esc(r.followUp)}</div>` : ''}
         ${r.reply ? `<div class="note"><b>Admin:</b> ${esc(r.reply)}</div>` : ''}
         <div class="row">
-          <button class="act" data-do="endorse" data-id="${r.id}">Endorse as ${esc(board.people[me].name)}</button>
+          <button class="act" data-do="endorse" data-id="${r.id}">${mine.endorsed.includes(r.id) ? 'Endorsed by you' : `Endorse as ${esc(board.people[me].name)}`}</button>
           <input id="fu-${r.id}" placeholder="Follow-up (author only)" style="max-width:260px">
           <button class="act" data-do="followUp" data-id="${r.id}">Add follow-up</button>
         </div>

@@ -6,7 +6,7 @@ Only enrolled members can post, and nobody, including the admin, can tell which 
 
 - **Live demo:** https://emilpz320-a11y.github.io/murmur-midnight/ (runs the compiled contract in your browser)
 - **Contract:** [`contract/murmur.compact`](contract/murmur.compact)
-- **Tests:** [`src/test/murmur.test.ts`](src/test/murmur.test.ts), 13 tests, run in CI on every push
+- **Tests:** [`src/test/murmur.test.ts`](src/test/murmur.test.ts), 17 tests, run in CI on every push
 - **Video (2:50):** [`docs/murmur-demo.mp4`](docs/murmur-demo.mp4) · **Slides:** [`docs/murmur-deck.pdf`](docs/murmur-deck.pdf)
 
 ## The problem
@@ -25,6 +25,7 @@ Midnight contracts have two kinds of state, and Murmur uses both:
 | Public ledger (on chain, visible to everyone) | Private state (only on the member's device) |
 |---|---|
 | The admin key, the member keys, a Merkle tree of member keys | Each person's 32-byte secret key |
+| | The ids of the reports they wrote and endorsed (updated by witnesses) |
 | Reports, their round, status, endorsement count, follow-ups and admin replies | The Merkle path of their own member key (computed locally) |
 | Spent nullifiers, and one author tag per report | |
 
@@ -34,6 +35,7 @@ Midnight contracts have two kinds of state, and Murmur uses both:
 4. **Follow up.** At post time the contract stores an author tag `H("murmur:author", secret, reportId, contract)`. Later only the holder of that secret can reproduce it, so only the author can add a follow-up, still without saying who they are.
 5. **Respond.** The admin, authenticated by `adminKey(secret)`, sets a report to acknowledged or resolved and adds a public reply.
 6. **Rounds.** The admin opens a new round, which gives every member one new post.
+7. **Private bookkeeping.** At the end of `post` and `endorse`, after every check has passed, the circuits call the witnesses `rememberAuthored(id)` and `rememberEndorsed(id)`. These update only the caller's private state. Because nothing public links a report or an endorsement to a member, the member's own device is the only place that knows which reports are theirs, which is what lets the app show "your reports" and "already endorsed" without revealing either. A refused call never returns its new private state, so it records nothing.
 
 ### Circuits
 
@@ -64,13 +66,14 @@ Known limits, stated plainly:
 
 ## Tests
 
-`npm test` runs the contract in Midnight's in-memory simulator (compact-runtime, no proof server). The 13 tests cover:
+`npm test` runs the contract in Midnight's in-memory simulator (compact-runtime, no proof server). Each test keeps one private state per person across calls, as a wallet would. The 17 tests cover:
 
 - deploy and enrolment, duplicate enrolment, non-admin enrolment and non-admin round changes;
 - posting, posting by a non-member, one post per round and a new post after the next round;
 - endorsing once per report, endorsements by non-members and of reports that do not exist;
 - follow-ups by the author only (another member and the admin are refused);
 - admin responses (acknowledge, resolve, unknown report, non-admin refused);
+- private bookkeeping: a post or endorsement is recorded only in the caller's private state, a refused call records nothing, and an author can find and follow up on their own reports from private state alone;
 - the three privacy properties above.
 
 ## Build and run
