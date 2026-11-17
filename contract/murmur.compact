@@ -44,6 +44,11 @@ export ledger nullifiers: Set<Bytes<32>>;
 witness secretKey(): Bytes<32>;
 // The Merkle path of a member key in the members tree, found off-chain.
 witness memberPath(pk: Bytes<32>): MerkleTreePath<10, Bytes<32>>;
+// Private bookkeeping: record, on the caller's device only, which reports they
+// wrote and which they endorsed. The public ledger cannot tell (nullifiers and
+// author tags are unlinkable), so only the member's private state knows.
+witness rememberAuthored(id: Uint<64>): [];
+witness rememberEndorsed(id: Uint<64>): [];
 
 constructor() {
   adminPk = disclose(adminKey(secretKey()));
@@ -113,6 +118,7 @@ export circuit post(text: Opaque<"string">): Uint<64> {
   statuses.insert(id, Status.OPEN);
   endorsements.insert(id, 0);
   reportCount.increment(1);
+  rememberAuthored(id);
   return id;
 }
 
@@ -125,6 +131,7 @@ export circuit endorse(id: Uint<64>): [] {
   assert(!nullifiers.member(n), "Already endorsed this report");
   nullifiers.insert(n);
   endorsements.insert(i, (endorsements.lookup(i) + 1) as Uint<64>);
+  rememberEndorsed(i);
 }
 
 export circuit followUp(id: Uint<64>, text: Opaque<"string">): [] {

@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { Sim, assertNotInPublicState, expectRejects } from './sim.js';
 import { Contract, ledger, pureCircuits, Status } from '../../contract/managed/murmur/contract/index.js';
-import { createMurmurPrivateState, witnesses } from '../../contract/witnesses.js';
+import { createMurmurPrivateState, type MurmurPrivateState, witnesses } from '../../contract/witnesses.js';
 
 const newSecretKey = (): Uint8Array => crypto.getRandomValues(new Uint8Array(32));
 const memberKey = (sk: Uint8Array) => pureCircuits.memberKey(sk);
@@ -20,10 +20,22 @@ const deploy = () =>
 
 type MurmurSim = Awaited<ReturnType<typeof deploy>>;
 
-const as = (sim: MurmurSim, sk: Uint8Array) => {
-  sim.privateState = createMurmurPrivateState(sk);
-  return sim;
-};
+// Each person's private state lives on their own device: keep one per secret
+// key across calls, as a wallet's private state provider would.
+const wallets = new Map<string, MurmurPrivateState>();
+const walletOf = (sk: Uint8Array) => wallets.get(hex(sk)) ?? createMurmurPrivateState(sk);
+
+const as = (sim: MurmurSim, sk: Uint8Array) => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  call: async (circuit: string, ...args: any[]) => {
+    sim.privateState = walletOf(sk);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const out = await (sim.call as any)(circuit, ...args);
+    wallets.set(hex(sk), sim.privateState);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return out as { result: any; ledger: ReturnType<MurmurSim['ledger']> };
+  },
+});
 
 /** A deployed board with `n` enrolled members. */
 const setup = async (n = 3) => {
@@ -126,6 +138,46 @@ describe('Murmur: follow-ups and replies', () => {
     l = sim.ledger();
     expect(l.statuses.lookup(0n)).toBe(Status.RESOLVED);
     await expectRejects(() => as(sim, ADMIN_SK).call('respond', 9n, Status.RESOLVED, 'x'), 'No such report');
+  });
+});
+
+describe('Murmur: private state', () => {
+  it('records a post only in the author's private state', async () => {
+    const { sim, members } = await setup(2);
+    await as(sim, members[0]).call('post', 'mine');
+    expect(walletOf(members[0]).authored).toEqual([0n]);
+    expect(walletOf(members[1]).authored).toEqual([]);
+    expect(walletOf(ADMIN_SK).authored).toEqual([]);
+  });
+
+  it('keeps a refused post out of the private state', async () => {
+    const { sim, members } = await setup(1);
+    await as(sim, members[0]).call('post', 'first');
+    await expectRejects(() => as(sim, members[0]).call('post', 'second'), 'Already posted this round');
+    expect(walletOf(members[0]).authored).toEqual([0n]);
+  });
+
+  it('records endorsements privately, once, and nothing for a refused endorsement', async () => {
+    const { sim, members } = await setup(3);
+    await as(sim, members[0]).call('post', 'a');
+    await as(sim, ADMIN_SK).call('nextRound');
+    await as(sim, members[0]).call('post', 'b');
+    await as(sim, members[1]).call('endorse', 1n);
+    await as(sim, members[1]).call('endorse', 0n);
+    await expectRejects(() => as(sim, members[1]).call('endorse', 0n), 'Already endorsed this report');
+    expect(walletOf(members[1]).endorsed).toEqual([1n, 0n]);
+    expect(walletOf(members[2]).endorsed).toEqual([]);
+    expect(walletOf(members[0]).authored).toEqual([0n, 1n]);
+  });
+
+  it('lets the author find their own reports from private state alone, and follow up on them', async () => {
+    const { sim, members } = await setup(3);
+    await as(sim, members[1]).call('post', 'not mine');
+    await as(sim, members[2]).call('post', 'mine');
+    const [mine] = walletOf(members[2]).authored;
+    expect(sim.ledger().reports.lookup(mine)).toBe('mine');
+    const { ledger: l } = await as(sim, members[2]).call('followUp', mine, 'still happening');
+    expect(l.followUps.lookup(mine)).toBe('still happening');
   });
 });
 
