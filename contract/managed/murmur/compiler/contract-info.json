@@ -337,6 +337,40 @@
           }
         ]
       }
+    },
+    {
+      "name": "rememberAuthored",
+      "arguments": [
+        {
+          "name": "id",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 18446744073709551615
+          }
+        }
+      ],
+      "result type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "rememberEndorsed",
+      "arguments": [
+        {
+          "name": "id",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 18446744073709551615
+          }
+        }
+      ],
+      "result type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
     }
   ],
   "contracts": [

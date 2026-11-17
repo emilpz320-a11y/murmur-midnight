@@ -10,6 +10,10 @@ export type Witnesses<PS> = {
                                                goes_left: boolean
                                              }[]
                                      }];
+  rememberAuthored(context: __compactRuntime.WitnessContext<Ledger, PS>,
+                   id_0: bigint): [PS, []];
+  rememberEndorsed(context: __compactRuntime.WitnessContext<Ledger, PS>,
+                   id_0: bigint): [PS, []];
 }
 
 export type ImpureCircuits<PS> = {

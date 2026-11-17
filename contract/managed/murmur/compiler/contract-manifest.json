@@ -8,26 +8,26 @@
     "type": "directory",
     "contract-info.json": {
       "type": "file",
-      "size": 10020,
-      "hash": "32ec14658643e29fa36e03a4075ca9c27088028dc555ffbc8050c7e3ae5e31e6"
+      "size": 10658,
+      "hash": "caf13ccf3a265860de305f6943fcde71a8e8e6f4b56d12ca443c83d438b7a50a"
     }
   },
   "contract": {
     "type": "directory",
     "index.d.ts": {
       "type": "file",
-      "size": 7374,
-      "hash": "c158abbfcc935de795cc349b481147952d4eedc0337a1786ad051d9f0d2eed0e"
+      "size": 7608,
+      "hash": "f325a34d63ddf4794b80bbc1b4a87dfb1573fa3ce9112b28a581a87498d85dda"
     },
     "index.js": {
       "type": "file",
-      "size": 198796,
-      "hash": "340d0008038d797452a534b0f919bb03ceecb2bfd1c854fe9303b41bd97de92c"
+      "size": 201388,
+      "hash": "e30325e74da05b3f8172449e5fbdff36b576413ae2577288935c96bf9452fa09"
     },
     "index.js.map": {
       "type": "file",
-      "size": 6471,
-      "hash": "8d702775a3e727142caa24c034ac2ef088c02f2600f47caeb159af585b3a7e45"
+      "size": 6654,
+      "hash": "55110541ab7ad3997d8714a68486d3b1ed760183f6f4c580fc4b4d00975f02ba"
     }
   },
   "zkir": {

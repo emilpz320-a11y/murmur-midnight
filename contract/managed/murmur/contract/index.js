@@ -206,6 +206,12 @@ export class Contract {
     if (typeof(witnesses_0.memberPath) !== 'function') {
       throw new __compactRuntime.CompactError('first (witnesses) argument to Contract constructor does not contain a function-valued field named memberPath');
     }
+    if (typeof(witnesses_0.rememberAuthored) !== 'function') {
+      throw new __compactRuntime.CompactError('first (witnesses) argument to Contract constructor does not contain a function-valued field named rememberAuthored');
+    }
+    if (typeof(witnesses_0.rememberEndorsed) !== 'function') {
+      throw new __compactRuntime.CompactError('first (witnesses) argument to Contract constructor does not contain a function-valued field named rememberEndorsed');
+    }
     this.witnesses = witnesses_0;
     this.circuits = {
       async adminKey(context, ...args_1) {
@@ -232,14 +238,14 @@ export class Contract {
         if (!(typeof(contextOrig_0) === 'object' && contextOrig_0.callContext.currentQueryContext != undefined)) {
           __compactRuntime.typeError('enrol',
                                      'argument 1 (as invoked from Typescript)',
-                                     'murmur.compact line 86 char 1',
+                                     'murmur.compact line 91 char 1',
                                      'CircuitContext',
                                      contextOrig_0)
         }
         if (!(pk_0.buffer instanceof ArrayBuffer && pk_0.BYTES_PER_ELEMENT === 1 && pk_0.length === 32)) {
           __compactRuntime.typeError('enrol',
                                      'argument 1 (argument 2 as invoked from Typescript)',
-                                     'murmur.compact line 86 char 1',
+                                     'murmur.compact line 91 char 1',
                                      'Bytes<32>',
                                      pk_0)
         }
@@ -266,7 +272,7 @@ export class Contract {
         if (!(typeof(contextOrig_0) === 'object' && contextOrig_0.callContext.currentQueryContext != undefined)) {
           __compactRuntime.typeError('nextRound',
                                      'argument 1 (as invoked from Typescript)',
-                                     'murmur.compact line 96 char 1',
+                                     'murmur.compact line 101 char 1',
                                      'CircuitContext',
                                      contextOrig_0)
         }
@@ -291,14 +297,14 @@ export class Contract {
         if (!(typeof(contextOrig_0) === 'object' && contextOrig_0.callContext.currentQueryContext != undefined)) {
           __compactRuntime.typeError('post',
                                      'argument 1 (as invoked from Typescript)',
-                                     'murmur.compact line 101 char 1',
+                                     'murmur.compact line 106 char 1',
                                      'CircuitContext',
                                      contextOrig_0)
         }
         if (!(typeof (text_0) === 'string')) {
           __compactRuntime.typeError('post',
                                      'argument 1 (argument 2 as invoked from Typescript)',
-                                     'murmur.compact line 101 char 1',
+                                     'murmur.compact line 106 char 1',
                                      'Opaque<"string">',
                                      text_0)
         }
@@ -326,14 +332,14 @@ export class Contract {
         if (!(typeof(contextOrig_0) === 'object' && contextOrig_0.callContext.currentQueryContext != undefined)) {
           __compactRuntime.typeError('endorse',
                                      'argument 1 (as invoked from Typescript)',
-                                     'murmur.compact line 119 char 1',
+                                     'murmur.compact line 125 char 1',
                                      'CircuitContext',
                                      contextOrig_0)
         }
         if (!(typeof(id_0) === 'bigint' && id_0 >= 0n && id_0 <= 18446744073709551615n)) {
           __compactRuntime.typeError('endorse',
                                      'argument 1 (argument 2 as invoked from Typescript)',
-                                     'murmur.compact line 119 char 1',
+                                     'murmur.compact line 125 char 1',
                                      'Uint<0..18446744073709551616>',
                                      id_0)
         }
@@ -362,21 +368,21 @@ export class Contract {
         if (!(typeof(contextOrig_0) === 'object' && contextOrig_0.callContext.currentQueryContext != undefined)) {
           __compactRuntime.typeError('followUp',
                                      'argument 1 (as invoked from Typescript)',
-                                     'murmur.compact line 130 char 1',
+                                     'murmur.compact line 137 char 1',
                                      'CircuitContext',
                                      contextOrig_0)
         }
         if (!(typeof(id_0) === 'bigint' && id_0 >= 0n && id_0 <= 18446744073709551615n)) {
           __compactRuntime.typeError('followUp',
                                      'argument 1 (argument 2 as invoked from Typescript)',
-                                     'murmur.compact line 130 char 1',
+                                     'murmur.compact line 137 char 1',
                                      'Uint<0..18446744073709551616>',
                                      id_0)
         }
         if (!(typeof (text_0) === 'string')) {
           __compactRuntime.typeError('followUp',
                                      'argument 2 (argument 3 as invoked from Typescript)',
-                                     'murmur.compact line 130 char 1',
+                                     'murmur.compact line 137 char 1',
                                      'Opaque<"string">',
                                      text_0)
         }
@@ -409,28 +415,28 @@ export class Contract {
         if (!(typeof(contextOrig_0) === 'object' && contextOrig_0.callContext.currentQueryContext != undefined)) {
           __compactRuntime.typeError('respond',
                                      'argument 1 (as invoked from Typescript)',
-                                     'murmur.compact line 141 char 1',
+                                     'murmur.compact line 148 char 1',
                                      'CircuitContext',
                                      contextOrig_0)
         }
         if (!(typeof(id_0) === 'bigint' && id_0 >= 0n && id_0 <= 18446744073709551615n)) {
           __compactRuntime.typeError('respond',
                                      'argument 1 (argument 2 as invoked from Typescript)',
-                                     'murmur.compact line 141 char 1',
+                                     'murmur.compact line 148 char 1',
                                      'Uint<0..18446744073709551616>',
                                      id_0)
         }
         if (!(typeof(status_0) === 'number' && status_0 >= 0 && status_0 <= 2)) {
           __compactRuntime.typeError('respond',
                                      'argument 2 (argument 3 as invoked from Typescript)',
-                                     'murmur.compact line 141 char 1',
+                                     'murmur.compact line 148 char 1',
                                      'Enum<Status, OPEN, ACKNOWLEDGED, RESOLVED>',
                                      status_0)
         }
         if (!(typeof (text_0) === 'string')) {
           __compactRuntime.typeError('respond',
                                      'argument 3 (argument 4 as invoked from Typescript)',
-                                     'murmur.compact line 141 char 1',
+                                     'murmur.compact line 148 char 1',
                                      'Opaque<"string">',
                                      text_0)
         }
@@ -761,6 +767,42 @@ export class Contract {
     });
     return result_0;
   }
+  _rememberAuthored_0(context, partialProofData, id_0) {
+    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.callContext.currentQueryContext.state), context.callContext.currentPrivateState, context.callContext.currentQueryContext.address);
+    const [nextPrivateState_0, result_0] = this.witnesses.rememberAuthored(witnessContext_0,
+                                                                           id_0);
+    context.callContext.currentPrivateState = nextPrivateState_0;
+    if (!(Array.isArray(result_0) && result_0.length === 0 )) {
+      __compactRuntime.typeError('rememberAuthored',
+                                 'return value',
+                                 'murmur.compact line 50 char 1',
+                                 '[]',
+                                 result_0)
+    }
+    partialProofData.privateTranscriptOutputs.push({
+      value: [],
+      alignment: []
+    });
+    return result_0;
+  }
+  _rememberEndorsed_0(context, partialProofData, id_0) {
+    const witnessContext_0 = __compactRuntime.createWitnessContext(ledger(context.callContext.currentQueryContext.state), context.callContext.currentPrivateState, context.callContext.currentQueryContext.address);
+    const [nextPrivateState_0, result_0] = this.witnesses.rememberEndorsed(witnessContext_0,
+                                                                           id_0);
+    context.callContext.currentPrivateState = nextPrivateState_0;
+    if (!(Array.isArray(result_0) && result_0.length === 0 )) {
+      __compactRuntime.typeError('rememberEndorsed',
+                                 'return value',
+                                 'murmur.compact line 51 char 1',
+                                 '[]',
+                                 result_0)
+    }
+    partialProofData.privateTranscriptOutputs.push({
+      value: [],
+      alignment: []
+    });
+    return result_0;
+  }
   _adminKey_0(sk_0) {
     return this._persistentHash_0([new Uint8Array([109, 117, 114, 109, 117, 114, 58, 97, 100, 109, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
                                    sk_0]);
@@ -995,7 +1037,7 @@ export class Contract {
     const n_0 = this._postNullifier_0(sk_0,
                                       __compactRuntime.convertBigintToBytes(32,
                                                                             rnd_0,
-                                                                            'murmur.compact line 106 char 40'),
+                                                                            'murmur.compact line 111 char 40'),
                                       instance_0);
     __compactRuntime.assert(!_descriptor_2.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                        partialProofData,
@@ -1079,7 +1121,7 @@ export class Contract {
     const tmp_0 = this._authorTag_0(sk_0,
                                     __compactRuntime.convertBigintToBytes(32,
                                                                           id_0,
-                                                                          'murmur.compact line 112 char 48'),
+                                                                          'murmur.compact line 117 char 48'),
                                     instance_0);
     __compactRuntime.queryLedgerState(context,
                                       partialProofData,
@@ -1149,6 +1191,7 @@ export class Contract {
                                                                 .value
                                                             )) } },
                                        { ins: { cached: true, n: 1 } }]);
+    this._rememberAuthored_0(context, partialProofData, id_0);
     return id_0;
   }
   async _endorse_0(context, partialProofData, id_0) {
@@ -1175,7 +1218,7 @@ export class Contract {
     const n_0 = this._endorseNullifier_0(sk_0,
                                          __compactRuntime.convertBigintToBytes(32,
                                                                                i_0,
-                                                                               'murmur.compact line 124 char 43'),
+                                                                               'murmur.compact line 130 char 43'),
                                          _descriptor_5.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                                    partialProofData,
                                                                                                    [
@@ -1223,7 +1266,7 @@ export class Contract {
                                        { ins: { cached: true, n: 1 } }]);
     const tmp_0 = ((t1) => {
                     if (t1 > 18446744073709551615n) {
-                      throw new __compactRuntime.CompactError('murmur.compact line 127 char 26: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 18446744073709551615');
+                      throw new __compactRuntime.CompactError('murmur.compact line 133 char 26: cast from Field or Uint value to smaller Uint value failed: ' + t1 + ' is greater than 18446744073709551615');
                     }
                     return t1;
                   })(_descriptor_0.fromValue(__compactRuntime.queryLedgerState(context,
@@ -1263,6 +1306,7 @@ export class Contract {
                                                                                               alignment: _descriptor_0.alignment() }).encode() } },
                                        { ins: { cached: false, n: 1 } },
                                        { ins: { cached: true, n: 1 } }]);
+    this._rememberEndorsed_0(context, partialProofData, i_0);
     return [];
   }
   async _followUp_0(context, partialProofData, id_0, text_0) {
@@ -1306,7 +1350,7 @@ export class Contract {
                                           this._authorTag_0(sk_0,
                                                             __compactRuntime.convertBigintToBytes(32,
                                                                                                   i_0,
-                                                                                                  'murmur.compact line 135 char 52'),
+                                                                                                  'murmur.compact line 142 char 52'),
                                                             _descriptor_5.fromValue(__compactRuntime.queryLedgerState(context,
                                                                                                                       partialProofData,
                                                                                                                       [
@@ -2525,7 +2569,10 @@ const _emptyContext = {
   callContext: { currentQueryContext: new __compactRuntime.QueryContext(new __compactRuntime.ContractState().data, __compactRuntime.dummyContractAddress()), currentGasCost: __compactRuntime.emptyRunningCost() }
 };
 const _dummyContract = new Contract({
-  secretKey: (...args) => undefined, memberPath: (...args) => undefined
+  secretKey: (...args) => undefined,
+  memberPath: (...args) => undefined,
+  rememberAuthored: (...args) => undefined,
+  rememberEndorsed: (...args) => undefined
 });
 export const pureCircuits = {
   adminKey: (...args_0) => {
@@ -2536,7 +2583,7 @@ export const pureCircuits = {
     if (!(sk_0.buffer instanceof ArrayBuffer && sk_0.BYTES_PER_ELEMENT === 1 && sk_0.length === 32)) {
       __compactRuntime.typeError('adminKey',
                                  'argument 1',
-                                 'murmur.compact line 52 char 1',
+                                 'murmur.compact line 57 char 1',
                                  'Bytes<32>',
                                  sk_0)
     }
@@ -2550,7 +2597,7 @@ export const pureCircuits = {
     if (!(sk_0.buffer instanceof ArrayBuffer && sk_0.BYTES_PER_ELEMENT === 1 && sk_0.length === 32)) {
       __compactRuntime.typeError('memberKey',
                                  'argument 1',
-                                 'murmur.compact line 56 char 1',
+                                 'murmur.compact line 61 char 1',
                                  'Bytes<32>',
                                  sk_0)
     }
@@ -2566,21 +2613,21 @@ export const pureCircuits = {
     if (!(sk_0.buffer instanceof ArrayBuffer && sk_0.BYTES_PER_ELEMENT === 1 && sk_0.length === 32)) {
       __compactRuntime.typeError('postNullifier',
                                  'argument 1',
-                                 'murmur.compact line 61 char 1',
+                                 'murmur.compact line 66 char 1',
                                  'Bytes<32>',
                                  sk_0)
     }
     if (!(rnd_0.buffer instanceof ArrayBuffer && rnd_0.BYTES_PER_ELEMENT === 1 && rnd_0.length === 32)) {
       __compactRuntime.typeError('postNullifier',
                                  'argument 2',
-                                 'murmur.compact line 61 char 1',
+                                 'murmur.compact line 66 char 1',
                                  'Bytes<32>',
                                  rnd_0)
     }
     if (!(instance_0.buffer instanceof ArrayBuffer && instance_0.BYTES_PER_ELEMENT === 1 && instance_0.length === 32)) {
       __compactRuntime.typeError('postNullifier',
                                  'argument 3',
-                                 'murmur.compact line 61 char 1',
+                                 'murmur.compact line 66 char 1',
                                  'Bytes<32>',
                                  instance_0)
     }
@@ -2596,21 +2643,21 @@ export const pureCircuits = {
     if (!(sk_0.buffer instanceof ArrayBuffer && sk_0.BYTES_PER_ELEMENT === 1 && sk_0.length === 32)) {
       __compactRuntime.typeError('endorseNullifier',
                                  'argument 1',
-                                 'murmur.compact line 66 char 1',
+                                 'murmur.compact line 71 char 1',
                                  'Bytes<32>',
                                  sk_0)
     }
     if (!(id_0.buffer instanceof ArrayBuffer && id_0.BYTES_PER_ELEMENT === 1 && id_0.length === 32)) {
       __compactRuntime.typeError('endorseNullifier',
                                  'argument 2',
-                                 'murmur.compact line 66 char 1',
+                                 'murmur.compact line 71 char 1',
                                  'Bytes<32>',
                                  id_0)
     }
     if (!(instance_0.buffer instanceof ArrayBuffer && instance_0.BYTES_PER_ELEMENT === 1 && instance_0.length === 32)) {
       __compactRuntime.typeError('endorseNullifier',
                                  'argument 3',
-                                 'murmur.compact line 66 char 1',
+                                 'murmur.compact line 71 char 1',
                                  'Bytes<32>',
                                  instance_0)
     }
@@ -2626,21 +2673,21 @@ export const pureCircuits = {
     if (!(sk_0.buffer instanceof ArrayBuffer && sk_0.BYTES_PER_ELEMENT === 1 && sk_0.length === 32)) {
       __compactRuntime.typeError('authorTag',
                                  'argument 1',
-                                 'murmur.compact line 71 char 1',
+                                 'murmur.compact line 76 char 1',
                                  'Bytes<32>',
                                  sk_0)
     }
     if (!(id_0.buffer instanceof ArrayBuffer && id_0.BYTES_PER_ELEMENT === 1 && id_0.length === 32)) {
       __compactRuntime.typeError('authorTag',
                                  'argument 2',
-                                 'murmur.compact line 71 char 1',
+                                 'murmur.compact line 76 char 1',
                                  'Bytes<32>',
                                  id_0)
     }
     if (!(instance_0.buffer instanceof ArrayBuffer && instance_0.BYTES_PER_ELEMENT === 1 && instance_0.length === 32)) {
       __compactRuntime.typeError('authorTag',
                                  'argument 3',
-                                 'murmur.compact line 71 char 1',
+                                 'murmur.compact line 76 char 1',
                                  'Bytes<32>',
                                  instance_0)
     }
