@@ -1,0 +1,28 @@
+{
+  "version": { "major": 3, "minor": 1 },
+  "do_communications_commitment": true,
+  "inputs": [
+  ],
+  "outputs": [
+  ],
+  "instructions": [
+    { "op": "private_input", "type": "Scalar<BLS12-381>", "output": "%sk.0", "guard": null },
+    { "op": "constrain_bits", "val": "%sk.0", "bits": 8 },
+    { "op": "private_input", "type": "Scalar<BLS12-381>", "output": "%sk.1", "guard": null },
+    { "op": "constrain_bits", "val": "%sk.1", "bits": 248 },
+    { "op": "persistent_hash", "output": "%bytes.2", "alignment": [{ "tag": "atom", "value": { "length": 32, "tag": "bytes" } }, { "tag": "atom", "value": { "length": 32, "tag": "bytes" } }], "inputs": ["0x00", "0x6d75726d75723a61646d696e", "%sk.0", "%sk.1"] },
+    { "op": "bytes_into_natives", "outputs": ["%t.3", "%t.4"], "bytes": "%bytes.2" },
+    { "op": "public_input", "type": "Scalar<BLS12-381>", "output": "%t.5", "guard": null },
+    { "op": "public_input", "type": "Scalar<BLS12-381>", "output": "%t.6", "guard": null },
+    { "op": "impact", "guard": "0x01", "inputs": ["0x30"] },
+    { "op": "impact", "guard": "0x01", "inputs": ["0x50", "0x01", "0x01", "0x00"] },
+    { "op": "impact", "guard": "0x01", "inputs": ["0x0c", "0x01", "0x20", "%t.5", "%t.6"] },
+    { "op": "test_eq", "output": "%t.7", "a": "%t.4", "b": "%t.5" },
+    { "op": "test_eq", "output": "%t.8", "a": "%t.3", "b": "%t.6" },
+    { "op": "cond_select", "output": "%t.9", "bit": "%t.7", "a": "%t.8", "b": "0x00" },
+    { "op": "assert", "cond": "%t.9" },
+    { "op": "impact", "guard": "0x01", "inputs": ["0x70", "0x01", "0x01", "0x04"] },
+    { "op": "impact", "guard": "0x01", "inputs": ["0x0e", "0x01"] },
+    { "op": "impact", "guard": "0x01", "inputs": ["0xa1"] }
+  ]
+}
