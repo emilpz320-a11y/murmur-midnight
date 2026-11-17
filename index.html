@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Murmur</title>
+  <meta name="description" content="Anonymous, verified feedback for teams on Midnight.">
+  <style>
+    :root {
+      --bg: #f4f3f8; --panel: #ffffff; --ink: #1b1a24; --muted: #66637a; --line: #e2e0ea;
+      --accent: #5b4bd6; --accent-ink: #ffffff; --ok: #157347; --bad: #b42335; --chip: #eeecf6;
+      --open: #8a6d00; --ack: #2457b3; --res: #157347;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #121119; --panel: #1b1a25; --ink: #eceaf4; --muted: #a29fb6; --line: #2e2c3c;
+        --accent: #8f82ff; --accent-ink: #121119; --ok: #4ade80; --bad: #f87171; --chip: #262435;
+        --open: #e5c14b; --ack: #7aa7ff; --res: #4ade80; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink);
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    main { max-width: 1100px; margin: 0 auto; padding: 28px 16px 64px; }
+    h1 { margin: 0; font-size: 28px; letter-spacing: -0.01em; }
+    h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+    .lead { color: var(--muted); max-width: 75ch; margin: 6px 0 20px; }
+    .people { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .person { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 999px;
+      padding: 7px 14px; cursor: pointer; font: inherit; }
+    .person small { color: var(--muted); margin-left: 6px; }
+    .person.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+    .person.active small { color: inherit; opacity: .8; }
+    .grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; }
+    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    textarea, input, select { width: 100%; font: inherit; color: var(--ink); background: var(--bg);
+      border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+    textarea { min-height: 70px; resize: vertical; }
+    button.act { font: inherit; border: 1px solid var(--line); background: var(--chip); color: var(--ink);
+      border-radius: 8px; padding: 6px 11px; cursor: pointer; }
+    button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+    button:disabled { opacity: .5; cursor: progress; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+    .report { border-top: 1px solid var(--line); padding: 14px 0; }
+    .report:first-child { border-top: 0; padding-top: 0; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font-size: 13px; }
+    .badge { padding: 1px 9px; border-radius: 999px; background: var(--chip); font-size: 12px; font-weight: 600; }
+    .s0 { color: var(--open); } .s1 { color: var(--ack); } .s2 { color: var(--res); }
+    .text { margin: 6px 0; white-space: pre-wrap; }
+    .badge.mine { color: var(--accent); }
+    .private { margin-top: 12px; padding: 10px 12px; border: 1px dashed var(--accent); border-radius: 10px; font-size: 14px; }
+    .note { border-left: 3px solid var(--line); padding: 2px 10px; margin: 6px 0; font-size: 14px; }
+    .note b { font-weight: 600; }
+    code, .mono { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+    ul.plain { list-style: none; padding: 0; margin: 0; }
+    ul.plain li { padding: 3px 0; overflow-wrap: anywhere; }
+    .ok { color: var(--ok); } .bad { color: var(--bad); }
+    .muted { color: var(--muted); font-size: 13px; }
+    ol.log { list-style: none; padding: 0; margin: 0; max-height: 300px; overflow: auto; font-size: 14px; }
+    ol.log li { padding: 5px 0; border-bottom: 1px solid var(--line); }
+    .empty { color: var(--muted); font-style: italic; }
+  </style>
+  <script type="module" crossorigin src="./assets/index-BVEikzqc.js"></script>
+</head>
+<body>
+<main>
+  <h1>Murmur</h1>
+  <p class="lead">Anonymous, verified feedback for a team, built on Midnight. Only enrolled members can post, and nobody,
+    including the admin, can tell which member wrote a report. Pick who you are below: every button runs the real
+    compiled Compact circuit with that person's secret key, which stays on their side.</p>
+
+  <div class="people" id="people"></div>
+
+  <div class="grid">
+    <div>
+      <section class="panel" id="compose"></section>
+      <section class="panel">
+        <h2>Board</h2>
+        <div id="reports"></div>
+      </section>
+    </div>
+    <div>
+      <section class="panel" id="admin"></section>
+      <section class="panel">
+        <h2>What the public ledger shows</h2>
+        <div id="public"></div>
+      </section>
+      <section class="panel">
+        <h2>Activity</h2>
+        <ol class="log" id="log"></ol>
+      </section>
+    </div>
+  </div>
+  <p class="muted">Runs the contract in Midnight's compact-runtime simulator in your browser (no wallet, no proof
+    server). Source: <a href="https://github.com/emilpz320-a11y/murmur-midnight">github.com/emilpz320-a11y/murmur-midnight</a></p>
+</main>
+</body>
+</html>
