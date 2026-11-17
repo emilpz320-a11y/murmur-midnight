@@ -7,6 +7,7 @@ Only enrolled members can post, and nobody, including the admin, can tell which 
 - **Live demo:** https://emilpz320-a11y.github.io/murmur-midnight/ (runs the compiled contract in your browser)
 - **Contract:** [`contract/murmur.compact`](contract/murmur.compact)
 - **Tests:** [`src/test/murmur.test.ts`](src/test/murmur.test.ts), 13 tests, run in CI on every push
+- **Video (2:50):** [`docs/murmur-demo.mp4`](docs/murmur-demo.mp4) · **Slides:** [`docs/murmur-deck.pdf`](docs/murmur-deck.pdf)
 
 ## The problem
 

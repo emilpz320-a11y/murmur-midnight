@@ -2,3 +2,5 @@ node_modules/
 dist/
 contract/managed/*/keys/
 .claude/
+docs/video-work/
+docs/slides/
