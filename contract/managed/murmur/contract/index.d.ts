@@ -19,7 +19,9 @@ export type Witnesses<PS> = {
 export type ImpureCircuits<PS> = {
   enrol(context: __compactRuntime.CircuitContext<PS>, pk_0: Uint8Array): Promise<__compactRuntime.CircuitResults<PS, []>>;
   nextRound(context: __compactRuntime.CircuitContext<PS>): Promise<__compactRuntime.CircuitResults<PS, []>>;
+  setBoxKey(context: __compactRuntime.CircuitContext<PS>, key_0: Uint8Array): Promise<__compactRuntime.CircuitResults<PS, []>>;
   post(context: __compactRuntime.CircuitContext<PS>, text_0: string): Promise<__compactRuntime.CircuitResults<PS, bigint>>;
+  postSealed(context: __compactRuntime.CircuitContext<PS>, ciphertext_0: string): Promise<__compactRuntime.CircuitResults<PS, bigint>>;
   endorse(context: __compactRuntime.CircuitContext<PS>, id_0: bigint): Promise<__compactRuntime.CircuitResults<PS, []>>;
   followUp(context: __compactRuntime.CircuitContext<PS>,
            id_0: bigint,
@@ -33,7 +35,9 @@ export type ImpureCircuits<PS> = {
 export type ProvableCircuits<PS> = {
   enrol(context: __compactRuntime.CircuitContext<PS>, pk_0: Uint8Array): Promise<__compactRuntime.CircuitResults<PS, []>>;
   nextRound(context: __compactRuntime.CircuitContext<PS>): Promise<__compactRuntime.CircuitResults<PS, []>>;
+  setBoxKey(context: __compactRuntime.CircuitContext<PS>, key_0: Uint8Array): Promise<__compactRuntime.CircuitResults<PS, []>>;
   post(context: __compactRuntime.CircuitContext<PS>, text_0: string): Promise<__compactRuntime.CircuitResults<PS, bigint>>;
+  postSealed(context: __compactRuntime.CircuitContext<PS>, ciphertext_0: string): Promise<__compactRuntime.CircuitResults<PS, bigint>>;
   endorse(context: __compactRuntime.CircuitContext<PS>, id_0: bigint): Promise<__compactRuntime.CircuitResults<PS, []>>;
   followUp(context: __compactRuntime.CircuitContext<PS>,
            id_0: bigint,
@@ -69,7 +73,9 @@ export type Circuits<PS> = {
             instance_0: Uint8Array): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
   enrol(context: __compactRuntime.CircuitContext<PS>, pk_0: Uint8Array): Promise<__compactRuntime.CircuitResults<PS, []>>;
   nextRound(context: __compactRuntime.CircuitContext<PS>): Promise<__compactRuntime.CircuitResults<PS, []>>;
+  setBoxKey(context: __compactRuntime.CircuitContext<PS>, key_0: Uint8Array): Promise<__compactRuntime.CircuitResults<PS, []>>;
   post(context: __compactRuntime.CircuitContext<PS>, text_0: string): Promise<__compactRuntime.CircuitResults<PS, bigint>>;
+  postSealed(context: __compactRuntime.CircuitContext<PS>, ciphertext_0: string): Promise<__compactRuntime.CircuitResults<PS, bigint>>;
   endorse(context: __compactRuntime.CircuitContext<PS>, id_0: bigint): Promise<__compactRuntime.CircuitResults<PS, []>>;
   followUp(context: __compactRuntime.CircuitContext<PS>,
            id_0: bigint,
@@ -153,6 +159,13 @@ export type Ledger = {
     size(): bigint;
     member(elem_0: Uint8Array): boolean;
     [Symbol.iterator](): Iterator<Uint8Array>
+  };
+  readonly adminBoxKey: Uint8Array;
+  sealedReports: {
+    isEmpty(): boolean;
+    size(): bigint;
+    member(elem_0: bigint): boolean;
+    [Symbol.iterator](): Iterator<bigint>
   };
 }
 

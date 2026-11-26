@@ -15,7 +15,7 @@
     { "op": "constrain_bits", "val": "%sk.3", "bits": 248 },
     { "op": "public_input", "type": "Scalar<BLS12-381>", "output": "%t.4", "guard": null },
     { "op": "impact", "guard": "0x01", "inputs": ["0x30"] },
-    { "op": "impact", "guard": "0x01", "inputs": ["0x50", "0x01", "0x01", "0x06"] },
+    { "op": "impact", "guard": "0x01", "inputs": ["0x51", "0x01", "0x01", "0x01", "0x01", "0x01", "0x05"] },
     { "op": "impact", "guard": "0x01", "inputs": ["0x10", "0x01", "0x01", "0x08", "%id.0"] },
     { "op": "impact", "guard": "0x01", "inputs": ["0x18"] },
     { "op": "impact", "guard": "0x01", "inputs": ["0x0d", "0x01", "0x01", "%t.4"] },
@@ -23,7 +23,7 @@
     { "op": "public_input", "type": "Scalar<BLS12-381>", "output": "%t.5", "guard": null },
     { "op": "public_input", "type": "Scalar<BLS12-381>", "output": "%t.6", "guard": null },
     { "op": "impact", "guard": "0x01", "inputs": ["0x30"] },
-    { "op": "impact", "guard": "0x01", "inputs": ["0x50", "0x01", "0x01", "0x08"] },
+    { "op": "impact", "guard": "0x01", "inputs": ["0x51", "0x01", "0x01", "0x01", "0x01", "0x01", "0x07"] },
     { "op": "impact", "guard": "0x01", "inputs": ["0x50", "0x01", "0x08", "%id.0"] },
     { "op": "impact", "guard": "0x01", "inputs": ["0x0c", "0x01", "0x20", "%t.5", "%t.6"] },
     { "op": "div_mod_power_of_two", "outputs": ["%id.7", "%id.8"], "val": "%id.0", "bits": 248 },
@@ -38,10 +38,10 @@
     { "op": "test_eq", "output": "%t.15", "a": "%t.6", "b": "%t.12" },
     { "op": "cond_select", "output": "%t.16", "bit": "%t.14", "a": "%t.15", "b": "0x00" },
     { "op": "assert", "cond": "%t.16" },
-    { "op": "impact", "guard": "0x01", "inputs": ["0x70", "0x01", "0x01", "0x0b"] },
+    { "op": "impact", "guard": "0x01", "inputs": ["0x71", "0x01", "0x01", "0x01", "0x01", "0x01", "0x0a"] },
     { "op": "impact", "guard": "0x01", "inputs": ["0x10", "0x01", "0x01", "0x08", "%id.0"] },
     { "op": "impact", "guard": "0x01", "inputs": ["0x11", "0x01", "0x01", "-0x01", "%text.1"] },
     { "op": "impact", "guard": "0x01", "inputs": ["0x91"] },
-    { "op": "impact", "guard": "0x01", "inputs": ["0xa1"] }
+    { "op": "impact", "guard": "0x01", "inputs": ["0xa2"] }
   ]
 }
