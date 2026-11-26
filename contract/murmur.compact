@@ -10,6 +10,12 @@
 // author tag that only they can reproduce. Nothing on the public ledger links
 // a report, an endorsement or a follow-up to a member key, or two reports to
 // each other.
+//
+// Sealed reports: for sensitive cases a member can encrypt the report on their
+// device to the admin's published X25519 key and post only the ciphertext with
+// postSealed. It needs the same membership proof and spends the same round
+// nullifier, so it is exactly as anonymous as a public report, but only the
+// admin can read it.
 
 pragma language_version 0.28;
 
@@ -39,6 +45,11 @@ export ledger replies: Map<Uint<64>, Opaque<"string">>;
 
 // Spent post and endorsement nullifiers.
 export ledger nullifiers: Set<Bytes<32>>;
+
+// The admin's X25519 public key for sealed reports (all zeros until set), and
+// the ids of reports whose text is ciphertext only the admin can open.
+export ledger adminBoxKey: Bytes<32>;
+export ledger sealedReports: Set<Uint<64>>;
 
 // The caller's secret, from their private state. Never written to the ledger.
 witness secretKey(): Bytes<32>;
@@ -103,7 +114,27 @@ export circuit nextRound(): [] {
   round.increment(1);
 }
 
+// The admin publishes (or rotates) the public half of their encryption key.
+// The private half stays on the admin's device and never touches the chain.
+export circuit setBoxKey(key: Bytes<32>): [] {
+  requireAdmin();
+  const k = disclose(key);
+  assert(k != default<Bytes<32>>, "Encryption key cannot be empty");
+  adminBoxKey = k;
+}
+
 export circuit post(text: Opaque<"string">): Uint<64> {
+  return submit(text, false);
+}
+
+// Same proof and the same once-per-round nullifier as post: a sealed report is
+// as anonymous as a public one. Only the ciphertext reaches the ledger.
+export circuit postSealed(ciphertext: Opaque<"string">): Uint<64> {
+  assert(adminBoxKey != default<Bytes<32>>, "The admin has not published an encryption key");
+  return submit(ciphertext, true);
+}
+
+circuit submit(text: Opaque<"string">, isSealed: Boolean): Uint<64> {
   const sk = secretKey();
   requireMember(sk);
   const instance = kernel.self().bytes;
@@ -117,6 +148,9 @@ export circuit post(text: Opaque<"string">): Uint<64> {
   authorTags.insert(id, disclose(authorTag(sk, id as Field as Bytes<32>, instance)));
   statuses.insert(id, Status.OPEN);
   endorsements.insert(id, 0);
+  if (isSealed) {
+    sealedReports.insert(id);
+  }
   reportCount.increment(1);
   rememberAuthored(id);
   return id;

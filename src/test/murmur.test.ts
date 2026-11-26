@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Sim, assertNotInPublicState, expectRejects } from './sim.js';
 import { Contract, ledger, pureCircuits, Status } from '../../contract/managed/murmur/contract/index.js';
 import { createMurmurPrivateState, type MurmurPrivateState, witnesses } from '../../contract/witnesses.js';
+import { generateBoxKeyPair, open, seal } from '../crypto/seal.js';
 
 const newSecretKey = (): Uint8Array => crypto.getRandomValues(new Uint8Array(32));
 const memberKey = (sk: Uint8Array) => pureCircuits.memberKey(sk);
@@ -218,5 +219,71 @@ describe('Murmur: privacy', () => {
     const n1 = [...l.nullifiers].map(hex).filter((x) => !n0.includes(x));
     expect(n1).toHaveLength(1);
     expect(n0).not.toContain(n1[0]);
+  });
+});
+
+describe('Murmur: sealed reports', () => {
+  const SECRET = 'My team lead asked me to backdate the audit log on 12 Nov.';
+
+  it('lets only the admin publish the encryption key, and never an empty one', async () => {
+    const { sim, members } = await setup(1);
+    const keys = await generateBoxKeyPair();
+    await expectRejects(() => as(sim, members[0]).call('setBoxKey', keys.publicKey), 'Only the admin');
+    await expectRejects(() => as(sim, ADMIN_SK).call('setBoxKey', new Uint8Array(32)), 'cannot be empty');
+    const { ledger: l } = await as(sim, ADMIN_SK).call('setBoxKey', keys.publicKey);
+    expect(l.adminBoxKey).toEqual(keys.publicKey);
+  });
+
+  it('refuses sealed reports until the admin has published a key', async () => {
+    const { sim, members } = await setup(1);
+    await expectRejects(() => as(sim, members[0]).call('postSealed', 'msv1:xyz'), 'has not published an encryption key');
+  });
+
+  it('stores only ciphertext on the ledger, and only the admin key opens it', async () => {
+    const { sim, members } = await setup(3);
+    const keys = await generateBoxKeyPair();
+    await as(sim, ADMIN_SK).call('setBoxKey', keys.publicKey);
+    const box = await seal(SECRET, sim.ledger().adminBoxKey);
+    const { result: id, ledger: l } = await as(sim, members[2]).call('postSealed', box);
+    expect(l.sealedReports.member(id)).toBe(true);
+    expect(l.reports.lookup(id)).toBe(box);
+    expect(l.reports.lookup(id)).not.toContain('backdate');
+    expect(await open(l.reports.lookup(id), keys)).toBe(SECRET);
+    await expect(open(l.reports.lookup(id), await generateBoxKeyPair())).rejects.toThrow();
+  });
+
+  it('is as anonymous as a public report: same proof, same once-per-round limit, author-only follow-up', async () => {
+    const { sim, members } = await setup(3);
+    const keys = await generateBoxKeyPair();
+    await as(sim, ADMIN_SK).call('setBoxKey', keys.publicKey);
+    const { result: id } = await as(sim, members[0]).call('postSealed', await seal(SECRET, keys.publicKey));
+    // A sealed post spends the round nullifier: no second post, sealed or public, this round.
+    await expectRejects(() => as(sim, members[0]).call('post', 'and another one'), 'Already posted this round');
+    await expectRejects(() => as(sim, members[0]).call('postSealed', await seal('again', keys.publicKey)), 'Already posted this round');
+    // Non-members cannot post sealed reports either.
+    await expectRejects(() => as(sim, newSecretKey()).call('postSealed', await seal('outsider', keys.publicKey)));
+    // The author can follow up (sealed as well); nobody else can.
+    await as(sim, members[0]).call('followUp', id, await seal('It happened again today.', keys.publicKey));
+    await expectRejects(() => as(sim, members[1]).call('followUp', id, 'not mine'), 'Only the author');
+    expect(await open(sim.ledger().followUps.lookup(id), keys)).toBe('It happened again today.');
+    // The author remembers the report privately, as with public reports.
+    expect(walletOf(members[0]).authored).toContain(id);
+    // Public and sealed reports coexist; only the sealed one is flagged.
+    const { result: pub } = await as(sim, members[1]).call('post', 'Standups run 40 minutes over.');
+    expect(sim.ledger().sealedReports.member(pub)).toBe(false);
+    assertNotInPublicState(sim.ledger(), { m0: members[0], m1: members[1], m2: members[2], admin: ADMIN_SK });
+  });
+
+  it('lets the admin rotate the encryption key; new reports use the new key', async () => {
+    const { sim, members } = await setup(2);
+    const k1 = await generateBoxKeyPair();
+    const k2 = await generateBoxKeyPair();
+    await as(sim, ADMIN_SK).call('setBoxKey', k1.publicKey);
+    const { result: a } = await as(sim, members[0]).call('postSealed', await seal('before rotation', sim.ledger().adminBoxKey));
+    await as(sim, ADMIN_SK).call('setBoxKey', k2.publicKey);
+    const { result: b } = await as(sim, members[1]).call('postSealed', await seal('after rotation', sim.ledger().adminBoxKey));
+    expect(await open(sim.ledger().reports.lookup(a), k1)).toBe('before rotation');
+    expect(await open(sim.ledger().reports.lookup(b), k2)).toBe('after rotation');
+    await expect(open(sim.ledger().reports.lookup(b), k1)).rejects.toThrow();
   });
 });
