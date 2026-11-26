@@ -36,7 +36,8 @@ function renderCompose() {
     <h2>Post as ${esc(p.name)} · round ${board.round}</h2>
     <textarea id="text" maxlength="400" placeholder="What should the team know? Members post anonymously; one post per member per round."></textarea>
     <div class="row"><button class="act primary" data-do="post">Post anonymously</button>
-    <span class="muted">Your secret proves membership in zero knowledge; the board never learns which member you are.</span></div>
+    <label class="muted"><input type="checkbox" id="sealed" ${board.hasBoxKey ? '' : 'disabled'}> Confidential: seal it so only the admin can read it${board.hasBoxKey ? '' : ' (the admin has not published an encryption key yet)'}</label></div>
+    <p class="muted">Your secret proves membership in zero knowledge; the board never learns which member you are. A sealed report is encrypted on this device before it is posted.</p>
     <div class="private"><b>Only on ${esc(p.name)}'s device</b> (private state, never on chain):
       ${privateLine(me)}</div>`;
 }
@@ -61,9 +62,10 @@ function renderReports() {
         <div class="meta"><b>#${r.id}</b><span class="badge s${r.status}">${STATUS[r.status]}</span>
           ${mine.authored.includes(r.id) ? '<span class="badge mine">yours (only you can see this)</span>' : ''}
           <span>round ${r.round}</span><span>${r.endorsements} endorsement(s)</span>
-          <span class="mono" title="author tag: only the author can reproduce it">tag ${r.authorTag}</span></div>
-        <p class="text">${esc(r.text)}</p>
-        ${r.followUp ? `<div class="note"><b>Author follow-up:</b> ${esc(r.followUp)}</div>` : ''}
+          <span class="mono" title="author tag: only the author can reproduce it">tag ${r.authorTag}</span>
+          ${r.sealed ? '<span class="badge sealed">sealed for the admin</span>' : ''}</div>
+        ${sealedOr(r.sealed, 'r', r.id, r.text, (s) => `<p class="text">${esc(s)}</p>`)}
+        ${r.followUp ? sealedOr(r.sealed, 'f', r.id, r.followUp, (s) => `<div class="note"><b>Author follow-up:</b> ${esc(s)}</div>`) : ''}
         ${r.reply ? `<div class="note"><b>Admin:</b> ${esc(r.reply)}</div>` : ''}
         <div class="row">
           <button class="act" data-do="endorse" data-id="${r.id}">${mine.endorsed.includes(r.id) ? 'Endorsed by you' : `Endorse as ${esc(board.people[me].name)}`}</button>
@@ -73,6 +75,14 @@ function renderReports() {
       </article>`,
     )
     .join('');
+}
+
+// A sealed text shows as ciphertext to everyone except the admin's device, which decrypts it locally.
+function sealedOr(sealed: boolean, kind: 'r' | 'f', id: bigint, text: string, show: (s: string) => string): string {
+  if (!sealed || !text.startsWith('msv1:')) return show(text);
+  const plain = board.decrypted(me, kind, id, text);
+  if (plain !== undefined) return show(plain) + '<p class="muted">Decrypted on the admin&#39;s device; the chain holds only ciphertext.</p>';
+  return `<p class="text sealed-text">🔒 Sealed. Only the admin can read it. On chain: <code>${esc(text.slice(0, 42))}…</code></p>`;
 }
 
 function renderAdmin() {
@@ -85,7 +95,8 @@ function renderAdmin() {
   $('admin').innerHTML = `
     <h2>Admin actions ${isAdmin ? '' : `<span class="muted">(you are ${esc(board.people[me].name)}: the contract will refuse)</span>`}</h2>
     <div class="row">${enrolBtns || '<span class="muted">Everyone is enrolled.</span>'}</div>
-    <div class="row"><button class="act" data-do="nextRound">Open next round</button></div>
+    <div class="row"><button class="act" data-do="nextRound">Open next round</button>
+      <button class="act" data-do="publishKey">${board.hasBoxKey ? 'Rotate encryption key' : 'Publish encryption key'}</button></div>
     ${
       reports.length
         ? `<div class="row"><select id="r-id" style="max-width:90px">${reports.map((r) => `<option value="${r.id}">#${r.id}</option>`).join('')}</select>
@@ -99,7 +110,8 @@ function renderPublic() {
   const v = board.publicView();
   const check = board.privacyCheck();
   $('public').innerHTML = `
-    <p class="muted">Admin key <code>${v.adminPk}</code> · round ${v.round} · ${v.reportCount} report(s)</p>
+    <p class="muted">Admin key <code>${v.adminPk}</code> · round ${v.round} · ${v.reportCount} report(s), ${v.sealedCount} sealed</p>
+    <p class="muted">Admin encryption key (X25519, public half): ${v.adminBoxKey ? `<code>${v.adminBoxKey}</code>` : 'not published'}</p>
     <p class="muted">Member keys (published at enrolment):</p>
     <ul class="plain mono">${v.memberKeys.map((k) => `<li>${k}</li>`).join('') || '<li class="empty">none</li>'}</ul>
     <p class="muted">Spent nullifiers (posts and endorsements; none matches a member key):</p>
@@ -137,7 +149,8 @@ document.addEventListener('click', (ev) => {
   switch (t.dataset.do) {
     case 'post': {
       const text = ($('text') as HTMLTextAreaElement).value.trim();
-      if (text) void act(() => board.post(me, text));
+      const sealed = (document.getElementById('sealed') as HTMLInputElement | null)?.checked;
+      if (text) void act(() => (sealed ? board.postSealed(me, text) : board.post(me, text)));
       break;
     }
     case 'endorse':
@@ -153,6 +166,9 @@ document.addEventListener('click', (ev) => {
       break;
     case 'nextRound':
       void act(() => board.nextRound(me));
+      break;
+    case 'publishKey':
+      void act(() => board.publishBoxKey(me));
       break;
     case 'respond': {
       const rid = BigInt(($('r-id') as HTMLSelectElement).value);

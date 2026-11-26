@@ -15,6 +15,8 @@
 const PREFIX = 'msv1:';
 const INFO = new TextEncoder().encode('murmur:sealed:v1');
 const subtle = globalThis.crypto.subtle;
+// WebCrypto typings want ArrayBuffer-backed views; our byte arrays always are.
+const bytes = (u: Uint8Array) => u as Uint8Array<ArrayBuffer>;
 
 export type BoxKeyPair = {
   /** 32-byte X25519 public key: publish it on the ledger with setBoxKey. */
@@ -51,13 +53,13 @@ export async function generateBoxKeyPair(): Promise<BoxKeyPair> {
 
 async function aesKey(shared: ArrayBuffer, salt: Uint8Array, usage: KeyUsage): Promise<CryptoKey> {
   const ikm = await subtle.importKey('raw', shared, 'HKDF', false, ['deriveKey']);
-  return subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt, info: INFO }, ikm, { name: 'AES-GCM', length: 256 }, false, [usage]);
+  return subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: bytes(salt), info: INFO }, ikm, { name: 'AES-GCM', length: 256 }, false, [usage]);
 }
 
 /** Encrypt `text` so that only the holder of the admin's private key can read it. */
 export async function seal(text: string, adminPublicKey: Uint8Array): Promise<string> {
   if (adminPublicKey.length !== 32 || adminPublicKey.every((b) => b === 0)) throw new Error('No admin encryption key published');
-  const adminPub = await subtle.importKey('raw', adminPublicKey, { name: 'X25519' }, false, []);
+  const adminPub = await subtle.importKey('raw', bytes(adminPublicKey), { name: 'X25519' }, false, []);
   const eph = (await subtle.generateKey({ name: 'X25519' }, true, ['deriveBits'])) as CryptoKeyPair;
   const ephPub = new Uint8Array(await subtle.exportKey('raw', eph.publicKey));
   const shared = await subtle.deriveBits({ name: 'X25519', public: adminPub }, eph.privateKey, 256);

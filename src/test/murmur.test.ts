@@ -259,9 +259,11 @@ describe('Murmur: sealed reports', () => {
     const { result: id } = await as(sim, members[0]).call('postSealed', await seal(SECRET, keys.publicKey));
     // A sealed post spends the round nullifier: no second post, sealed or public, this round.
     await expectRejects(() => as(sim, members[0]).call('post', 'and another one'), 'Already posted this round');
-    await expectRejects(() => as(sim, members[0]).call('postSealed', await seal('again', keys.publicKey)), 'Already posted this round');
+    const again = await seal('again', keys.publicKey);
+    await expectRejects(() => as(sim, members[0]).call('postSealed', again), 'Already posted this round');
     // Non-members cannot post sealed reports either.
-    await expectRejects(() => as(sim, newSecretKey()).call('postSealed', await seal('outsider', keys.publicKey)));
+    const outsider = await seal('outsider', keys.publicKey);
+    await expectRejects(() => as(sim, newSecretKey()).call('postSealed', outsider));
     // The author can follow up (sealed as well); nobody else can.
     await as(sim, members[0]).call('followUp', id, await seal('It happened again today.', keys.publicKey));
     await expectRejects(() => as(sim, members[1]).call('followUp', id, 'not mine'), 'Only the author');

@@ -6,6 +6,7 @@
 import { Sim, collectPublicBytes } from '../test/sim.js';
 import { Contract, ledger, pureCircuits, Status } from '../../contract/managed/murmur/contract/index.js';
 import { createMurmurPrivateState, type MurmurPrivateState, witnesses } from '../../contract/witnesses.js';
+import { type BoxKeyPair, generateBoxKeyPair, open, seal } from '../crypto/seal.js';
 
 export { Status };
 
@@ -29,6 +30,8 @@ export interface Report {
   followUp?: string;
   reply?: string;
   authorTag: string;
+  /** True when the text is ciphertext only the admin can open. */
+  sealed: boolean;
 }
 
 export interface LogEntry {
@@ -50,6 +53,10 @@ export class Board {
   readonly people: Record<PersonId, Person>;
   readonly log: LogEntry[] = [];
   private sim!: MurmurSim;
+  /** The admin's encryption key pair: lives on the admin's device only. */
+  private boxKeys?: BoxKeyPair;
+  /** Sealed reports and follow-ups as decrypted on the admin's device. */
+  private inbox = new Map<string, string>();
 
   private constructor() {
     const person = (id: PersonId, name: string, role: string): Person => {
@@ -87,12 +94,62 @@ export class Board {
       const r = await fn();
       this.people[p].privateState = this.sim.privateState;
       this.log.unshift({ ok: true, who, action, detail: detail(r) });
+      await this.refreshInbox();
       return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       this.log.unshift({ ok: false, who, action, detail: `refused: ${explain(msg)}` });
       return false;
     }
+  }
+
+  /** The admin publishes (or rotates) the public half of an encryption key; the private half stays here. */
+  async publishBoxKey(by: PersonId = 'admin') {
+    const keys = await generateBoxKeyPair();
+    const ok = await this.run(by, 'publish encryption key', () => this.sim.call('setBoxKey', keys.publicKey), () => `X25519 key ${short(keys.publicKey)} published; the private half stays on the admin's device`);
+    if (ok && by === 'admin') {
+      this.boxKeys = keys;
+      await this.refreshInbox();
+    }
+    return ok;
+  }
+
+  get hasBoxKey(): boolean {
+    return this.sim.ledger().adminBoxKey.some((b) => b !== 0);
+  }
+
+  /** Encrypts on the member's device to the published admin key, then posts only the ciphertext. */
+  async postSealed(p: PersonId, text: string) {
+    let box: string;
+    try {
+      box = await seal(text, this.sim.ledger().adminBoxKey);
+    } catch {
+      box = 'msv1:';
+    }
+    return this.run(p, 'post sealed', () => this.sim.call('postSealed', box), (r) => `report #${r.result} published anonymously, sealed for the admin (${box.length} chars of ciphertext on chain)`);
+  }
+
+  /** Decrypt what the admin's key can open. Runs only with the admin's private key, on the admin's device. */
+  private async refreshInbox() {
+    if (!this.boxKeys) return;
+    const l = this.sim.ledger();
+    for (let i = 0n; i < l.reportCount; i++) {
+      if (!l.sealedReports.member(i)) continue;
+      const texts: [string, string][] = [[`r${i}`, l.reports.lookup(i)], [`f${i}`, l.followUps.member(i) ? l.followUps.lookup(i) : '']];
+      for (const [k, s] of texts) {
+        if (!s || this.inbox.has(k + s)) continue;
+        try {
+          this.inbox.set(k + s, await open(s, this.boxKeys));
+        } catch {
+          this.inbox.set(k + s, '(sealed with an earlier key)');
+        }
+      }
+    }
+  }
+
+  /** What the admin's device shows for a sealed text, or undefined for anyone else. */
+  decrypted(viewer: PersonId, kind: 'r' | 'f', id: bigint, sealedText: string): string | undefined {
+    return viewer === 'admin' ? this.inbox.get(`${kind}${id}${sealedText}`) : undefined;
   }
 
   enrol(p: PersonId, by: PersonId = 'admin') {
@@ -112,7 +169,9 @@ export class Board {
     return this.run(p, `endorse #${id}`, () => this.sim.call('endorse', id), (r) => `report #${id} now has ${r.ledger.endorsements.lookup(id)} endorsement(s)`);
   }
 
-  followUp(p: PersonId, id: bigint, text: string) {
+  async followUp(p: PersonId, id: bigint, text: string) {
+    // Follow-ups on a sealed report are sealed too.
+    if (this.sim.ledger().sealedReports.member(id) && this.hasBoxKey) text = await seal(text, this.sim.ledger().adminBoxKey);
     return this.run(p, `follow up #${id}`, () => this.sim.call('followUp', id, text), () => `author note added to #${id}`);
   }
 
@@ -143,6 +202,7 @@ export class Board {
         followUp: l.followUps.member(i) ? l.followUps.lookup(i) : undefined,
         reply: l.replies.member(i) ? l.replies.lookup(i) : undefined,
         authorTag: short(l.authorTags.lookup(i)),
+        sealed: l.sealedReports.member(i),
       });
     }
     return out.reverse();
@@ -153,6 +213,8 @@ export class Board {
     const l = this.sim.ledger();
     return {
       adminPk: short(l.adminPk),
+      adminBoxKey: l.adminBoxKey.some((b) => b !== 0) ? short(l.adminBoxKey) : null,
+      sealedCount: [...l.sealedReports].length,
       memberKeys: [...l.memberKeys].map(short),
       nullifiers: [...l.nullifiers].map(short),
       round: l.round,
@@ -180,6 +242,7 @@ function explain(message: string): string {
     'Only the author can follow up',
     'No such report',
     'This member key is not enrolled',
+    'The admin has not published an encryption key',
   ];
   return known.find((k) => message.includes(k)) ?? message.slice(0, 160);
 }
