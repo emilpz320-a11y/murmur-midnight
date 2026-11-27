@@ -16,12 +16,30 @@
 // postSealed. It needs the same membership proof and spends the same round
 // nullifier, so it is exactly as anonymous as a public report, but only the
 // admin can read it.
+//
+// Member self-rotation: a member can replace their key with rotateKey. The
+// circuit proves membership with the old secret (without revealing which
+// leaf), publishes a rotation tag derived from the old secret, and inserts a
+// fresh leaf for a new secret. The tag matches no member key, so nobody, the
+// admin included, can link the old key to the new one. Every membership proof
+// checks, in zero knowledge, that the caller's own tag is not among the
+// published ones, so a retired key can no longer post, endorse or rotate. A
+// new key is bound to the round and report count at the time of rotation, so
+// rotating never buys an extra post in a round or a second endorsement.
 
 pragma language_version 0.28;
 
 import CompactStandardLibrary;
 
 export enum Status { OPEN, ACKNOWLEDGED, RESOLVED }
+
+// Where the caller's key came from: enrolled by the admin, or created by a
+// rotation at a given round and report count. Kept in private state only.
+export struct KeyOrigin {
+  rotated: Boolean,
+  sinceRound: Uint<64>,
+  sinceReport: Uint<64>,
+}
 
 export sealed ledger adminPk: Bytes<32>;
 
@@ -51,6 +69,11 @@ export ledger nullifiers: Set<Bytes<32>>;
 export ledger adminBoxKey: Bytes<32>;
 export ledger sealedReports: Set<Uint<64>>;
 
+// Rotation tags of retired keys, newest first (all zeros in unused slots). At
+// most 32 rotations per board, so every proof can scan the whole list.
+export ledger retiredTags: Vector<32, Bytes<32>>;
+export ledger rotations: Counter;
+
 // The caller's secret, from their private state. Never written to the ledger.
 witness secretKey(): Bytes<32>;
 // The Merkle path of a member key in the members tree, found off-chain.
@@ -60,6 +83,15 @@ witness memberPath(pk: Bytes<32>): MerkleTreePath<10, Bytes<32>>;
 // author tags are unlinkable), so only the member's private state knows.
 witness rememberAuthored(id: Uint<64>): [];
 witness rememberEndorsed(id: Uint<64>): [];
+// How the caller's current key was created (enrolment or rotation).
+witness keyOrigin(): KeyOrigin;
+// The secret that wrote a report: the current key, or a key this member has
+// since rotated away from. Lets an author follow up on their older reports.
+witness authorSecret(id: Uint<64>): Bytes<32>;
+// A fresh random secret for rotateKey, generated on the member's device.
+witness freshSecretKey(): Bytes<32>;
+// After a successful rotation: switch the private state to the new secret.
+witness adoptKey(sk: Bytes<32>, sinceRound: Uint<64>, sinceReport: Uint<64>): [];
 
 constructor() {
   adminPk = disclose(adminKey(secretKey()));
@@ -71,6 +103,16 @@ export pure circuit adminKey(sk: Bytes<32>): Bytes<32> {
 
 export pure circuit memberKey(sk: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<2, Bytes<32>>>([pad(32, "murmur:member"), sk]);
+}
+
+// The leaf of a key created by rotation, bound to when it was created.
+export pure circuit rotatedMemberKey(sk: Bytes<32>, sinceRound: Bytes<32>, sinceReport: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<4, Bytes<32>>>([pad(32, "murmur:rotated"), sk, sinceRound, sinceReport]);
+}
+
+// Published once when a key is retired. Matches no member key or nullifier.
+export pure circuit rotationTag(sk: Bytes<32>, instance: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "murmur:rotate"), sk, instance]);
 }
 
 // One per member per round in this contract instance.
@@ -92,18 +134,30 @@ circuit requireAdmin(): [] {
   assert(disclose(adminKey(secretKey())) == adminPk, "Only the admin can do this");
 }
 
-// Proves the caller's member key is in the tree without revealing which leaf.
-circuit requireMember(sk: Bytes<32>): [] {
-  const path = memberPath(memberKey(sk));
-  assert(disclose(path.leaf == memberKey(sk)), "Path is not for this member");
+// Proves the caller's member key is in the tree without revealing which leaf,
+// and that the key has not been retired by a rotation.
+circuit requireMember(sk: Bytes<32>): KeyOrigin {
+  const origin = keyOrigin();
+  const leaf = origin.rotated
+    ? rotatedMemberKey(sk, origin.sinceRound as Field as Bytes<32>, origin.sinceReport as Field as Bytes<32>)
+    : memberKey(sk);
+  const path = memberPath(leaf);
+  assert(disclose(path.leaf == leaf), "Path is not for this member");
   assert(members.checkRoot(disclose(merkleTreePathRoot<10, Bytes<32>>(path))), "Not a member");
+  // Compared inside the proof: the caller's tag itself is never disclosed.
+  const tag = rotationTag(sk, kernel.self().bytes);
+  const retired = retiredTags;
+  for (const t of retired) {
+    assert(disclose(t != tag), "This key was rotated out");
+  }
+  return origin;
 }
 
 export circuit enrol(pk: Bytes<32>): [] {
   requireAdmin();
   const k = disclose(pk);
   assert(!memberKeys.member(k), "Member already enrolled");
-  assert(memberCount.read() < 1024, "Member list is full");
+  assert(memberCount.read() + rotations.read() < 1024, "Member list is full");
   memberKeys.insert(k);
   members.insert(k);
   memberCount.increment(1);
@@ -136,9 +190,10 @@ export circuit postSealed(ciphertext: Opaque<"string">): Uint<64> {
 
 circuit submit(text: Opaque<"string">, isSealed: Boolean): Uint<64> {
   const sk = secretKey();
-  requireMember(sk);
+  const origin = requireMember(sk);
   const instance = kernel.self().bytes;
   const rnd = round.read();
+  assert(disclose(!origin.rotated || rnd > origin.sinceRound), "A new key can post from the next round");
   const n = disclose(postNullifier(sk, rnd as Field as Bytes<32>, instance));
   assert(!nullifiers.member(n), "Already posted this round");
   nullifiers.insert(n);
@@ -158,9 +213,10 @@ circuit submit(text: Opaque<"string">, isSealed: Boolean): Uint<64> {
 
 export circuit endorse(id: Uint<64>): [] {
   const sk = secretKey();
-  requireMember(sk);
+  const origin = requireMember(sk);
   const i = disclose(id);
   assert(reports.member(i), "No such report");
+  assert(disclose(!origin.rotated || i >= origin.sinceReport), "A new key can only endorse reports posted after the rotation");
   const n = disclose(endorseNullifier(sk, i as Field as Bytes<32>, kernel.self().bytes));
   assert(!nullifiers.member(n), "Already endorsed this report");
   nullifiers.insert(n);
@@ -169,8 +225,8 @@ export circuit endorse(id: Uint<64>): [] {
 }
 
 export circuit followUp(id: Uint<64>, text: Opaque<"string">): [] {
-  const sk = secretKey();
   const i = disclose(id);
+  const sk = authorSecret(i);
   assert(reports.member(i), "No such report");
   assert(
     disclose(authorTags.lookup(i) == authorTag(sk, i as Field as Bytes<32>, kernel.self().bytes)),
@@ -185,4 +241,25 @@ export circuit respond(id: Uint<64>, status: Status, text: Opaque<"string">): []
   assert(reports.member(i), "No such report");
   statuses.insert(i, disclose(status));
   replies.insert(i, disclose(text));
+}
+
+// Member self-rotation. Proves membership with the current secret, retires it
+// by publishing its rotation tag, and adds a leaf for a fresh secret. The new
+// leaf is bound to the current round and report count: the new key can post
+// from the next round and endorse only reports posted after this point, so a
+// rotation never gives a member a second post or a second endorsement.
+export circuit rotateKey(): [] {
+  const sk = secretKey();
+  requireMember(sk);
+  assert(rotations.read() < 32, "No key rotations left on this board");
+  assert(memberCount.read() + rotations.read() < 1024, "Member list is full");
+  const old = retiredTags;
+  const tag = disclose(rotationTag(sk, kernel.self().bytes));
+  retiredTags = [tag, old[0], old[1], old[2], old[3], old[4], old[5], old[6], old[7], old[8], old[9], old[10], old[11], old[12], old[13], old[14], old[15], old[16], old[17], old[18], old[19], old[20], old[21], old[22], old[23], old[24], old[25], old[26], old[27], old[28], old[29], old[30]];
+  rotations.increment(1);
+  const next = freshSecretKey();
+  const sinceRound = round.read();
+  const sinceReport = reportCount.read();
+  members.insert(disclose(rotatedMemberKey(next, sinceRound as Field as Bytes<32>, sinceReport as Field as Bytes<32>)));
+  adoptKey(next, sinceRound, sinceReport);
 }
