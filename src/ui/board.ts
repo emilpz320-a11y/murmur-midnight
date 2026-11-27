@@ -6,7 +6,8 @@
 import { Sim, collectPublicBytes } from '../test/sim.js';
 import { Contract, ledger, pureCircuits, Status } from '../../contract/managed/murmur/contract/index.js';
 import { createMurmurPrivateState, type MurmurPrivateState, witnesses } from '../../contract/witnesses.js';
-import { type BoxKeyPair, generateBoxKeyPair, open, seal } from '../crypto/seal.js';
+import { type BoxKeyPair, generateBoxKeyPair, seal } from '../crypto/seal.js';
+import { openReply, openReport, sealReply, sealReport } from '../crypto/envelope.js';
 
 export { Status };
 
@@ -57,6 +58,10 @@ export class Board {
   private boxKeys?: BoxKeyPair;
   /** Sealed reports and follow-ups as decrypted on the admin's device. */
   private inbox = new Map<string, string>();
+  /** Reply keys the admin learned from sealed envelopes, by report id (admin's device). */
+  private replyKeyFor = new Map<bigint, Uint8Array>();
+  /** Each author's one-off reply keys, by report id (each author's own device). */
+  private myReplyKeys = new Map<PersonId, Map<bigint, BoxKeyPair>>();
 
   private constructor() {
     const person = (id: PersonId, name: string, role: string): Person => {
@@ -120,13 +125,24 @@ export class Board {
 
   /** Encrypts on the member's device to the published admin key, then posts only the ciphertext. */
   async postSealed(p: PersonId, text: string) {
-    let box: string;
+    let box = 'msv1:';
+    let replyKeys: BoxKeyPair | undefined;
     try {
-      box = await seal(text, this.sim.ledger().adminBoxKey);
+      ({ sealed: box, replyKeys } = await sealReport(text, this.sim.ledger().adminBoxKey));
     } catch {
-      box = 'msv1:';
+      // No key published: the contract refuses the empty box below.
     }
-    return this.run(p, 'post sealed', () => this.sim.call('postSealed', box), (r) => `report #${r.result} published anonymously, sealed for the admin (${box.length} chars of ciphertext on chain)`);
+    let id = -1n;
+    const ok = await this.run(p, 'post sealed', async () => {
+      const r = await this.sim.call('postSealed', box);
+      id = r.result;
+      return r;
+    }, (r) => `report #${r.result} published anonymously, sealed for the admin, with a private reply key kept on this device`);
+    if (ok && replyKeys) {
+      if (!this.myReplyKeys.has(p)) this.myReplyKeys.set(p, new Map());
+      this.myReplyKeys.get(p)!.set(id, replyKeys);
+    }
+    return ok;
   }
 
   /** Decrypt what the admin's key can open. Runs only with the admin's private key, on the admin's device. */
@@ -139,11 +155,29 @@ export class Board {
       for (const [k, s] of texts) {
         if (!s || this.inbox.has(k + s)) continue;
         try {
-          this.inbox.set(k + s, await open(s, this.boxKeys));
+          const o = await openReport(s, this.boxKeys);
+          this.inbox.set(k + s, o.text);
+          if (k.startsWith('r') && o.replyKey) this.replyKeyFor.set(i, o.replyKey);
         } catch {
           this.inbox.set(k + s, '(sealed with an earlier key)');
         }
       }
+    }
+  }
+
+  /** True when the admin can answer this sealed report privately (its author left a reply key). */
+  canReplyPrivately(id: bigint): boolean {
+    return this.replyKeyFor.has(id);
+  }
+
+  /** The author's device opens a private reply; anyone else gets undefined. */
+  async readPrivateReply(viewer: PersonId, id: bigint, sealedReply: string): Promise<string | undefined> {
+    const keys = this.myReplyKeys.get(viewer)?.get(id);
+    if (!keys) return undefined;
+    try {
+      return await openReply(sealedReply, keys);
+    } catch {
+      return undefined;
     }
   }
 
@@ -175,7 +209,10 @@ export class Board {
     return this.run(p, `follow up #${id}`, () => this.sim.call('followUp', id, text), () => `author note added to #${id}`);
   }
 
-  respond(id: bigint, status: Status, text: string, by: PersonId = 'admin') {
+  async respond(id: bigint, status: Status, text: string, by: PersonId = 'admin') {
+    // A sealed report that carries a reply key gets a reply only its anonymous author can read.
+    const key = by === 'admin' ? this.replyKeyFor.get(id) : undefined;
+    if (key) text = await sealReply(text, key);
     return this.run(by, `respond #${id}`, () => this.sim.call('respond', id, status, text), () => `#${id} marked ${Status[status].toLowerCase()}`);
   }
 

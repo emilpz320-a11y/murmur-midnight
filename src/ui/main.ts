@@ -66,7 +66,7 @@ function renderReports() {
           ${r.sealed ? '<span class="badge sealed">sealed for the admin</span>' : ''}</div>
         ${sealedOr(r.sealed, 'r', r.id, r.text, (s) => `<p class="text">${esc(s)}</p>`)}
         ${r.followUp ? sealedOr(r.sealed, 'f', r.id, r.followUp, (s) => `<div class="note"><b>Author follow-up:</b> ${esc(s)}</div>`) : ''}
-        ${r.reply ? `<div class="note"><b>Admin:</b> ${esc(r.reply)}</div>` : ''}
+        ${r.reply ? replyHtml(r.id, r.reply) : ''}
         <div class="row">
           <button class="act" data-do="endorse" data-id="${r.id}">${mine.endorsed.includes(r.id) ? 'Endorsed by you' : `Endorse as ${esc(board.people[me].name)}`}</button>
           <input id="fu-${r.id}" placeholder="Follow-up (author only)" style="max-width:260px">
@@ -85,6 +85,24 @@ function sealedOr(sealed: boolean, kind: 'r' | 'f', id: bigint, text: string, sh
   return `<p class="text sealed-text">🔒 Sealed. Only the admin can read it. On chain: <code>${esc(text.slice(0, 42))}…</code></p>`;
 }
 
+// Private replies: ciphertext for everyone, plaintext only on the anonymous author's device.
+const replyCache = new Map<string, string | undefined>();
+function replyHtml(id: bigint, reply: string): string {
+  if (!reply.startsWith('msv1:')) return `<div class="note"><b>Admin:</b> ${esc(reply)}</div>`;
+  const k = `${me}:${id}:${reply}`;
+  if (!replyCache.has(k)) {
+    replyCache.set(k, undefined);
+    void board.readPrivateReply(me, id, reply).then((v) => {
+      replyCache.set(k, v);
+      if (v !== undefined) renderReports();
+    });
+  }
+  const v = replyCache.get(k);
+  return v !== undefined
+    ? `<div class="note"><b>Admin (private reply, readable only by you):</b> ${esc(v)}</div>`
+    : `<div class="note sealed-text"><b>Admin:</b> 🔒 private reply for the anonymous author. On chain: <code>${esc(reply.slice(0, 42))}…</code></div>`;
+}
+
 function renderAdmin() {
   const isAdmin = me === 'admin';
   const reports = board.reports();
@@ -101,7 +119,7 @@ function renderAdmin() {
       reports.length
         ? `<div class="row"><select id="r-id" style="max-width:90px">${reports.map((r) => `<option value="${r.id}">#${r.id}</option>`).join('')}</select>
            <select id="r-status" style="max-width:150px"><option value="1">acknowledged</option><option value="2">resolved</option></select></div>
-           <div class="row"><input id="r-text" placeholder="Public reply"><button class="act" data-do="respond">Respond</button></div>`
+           <div class="row"><input id="r-text" placeholder="Reply (sealed reports with a reply key get a private reply)"><button class="act" data-do="respond">Respond</button></div>`
         : ''
     }`;
 }

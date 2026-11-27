@@ -59,6 +59,7 @@ What an observer of the chain can and cannot learn:
 - **Two reports by the same member cannot be linked to each other.** Their author tags and nullifiers depend on the round and the report id (`gives two reports by the same member unrelated author tags and nullifiers`).
 - **Values are bound to this contract instance**, so the same member's activity on two boards cannot be correlated.
 - **Sealed reports hide the content too.** For sensitive cases a member encrypts the report on their own device to the admin's published X25519 key and posts it with `postSealed`. Only ciphertext reaches the ledger, and only the admin's private key, which never leaves the admin's device, opens it. A sealed post needs the same membership proof and spends the same once-per-round nullifier as a public one, so it is exactly as anonymous. Each report uses a fresh ephemeral key, so two sealed reports share nothing either.
+- **The admin can answer a sealed report privately, without learning who wrote it.** The sealed envelope carries a one-off reply key whose private half stays on the author's device. The admin's answer goes through the normal `respond` circuit, sealed to that key, so only the anonymous author can read it; observers and other members see ciphertext, and a fresh reply key per report links nothing (`src/crypto/envelope.ts`).
 
 Known limits, stated plainly:
 
@@ -70,7 +71,7 @@ Known limits, stated plainly:
 
 ## Tests
 
-`npm test` runs the contract in Midnight's in-memory simulator (compact-runtime, no proof server). Each test keeps one private state per person across calls, as a wallet would. The 22 tests cover:
+`npm test` runs the contract in Midnight's in-memory simulator (compact-runtime, no proof server). Each test keeps one private state per person across calls, as a wallet would. The 23 tests cover:
 
 - deploy and enrolment, duplicate enrolment, non-admin enrolment and non-admin round changes;
 - posting, posting by a non-member, one post per round and a new post after the next round;
@@ -79,7 +80,7 @@ Known limits, stated plainly:
 - admin responses (acknowledge, resolve, unknown report, non-admin refused);
 - private bookkeeping: a post or endorsement is recorded only in the caller's private state, a refused call records nothing, and an author can find and follow up on their own reports from private state alone;
 - the three privacy properties above;
-- sealed reports: only the admin can publish the encryption key and never an empty one; sealed posts are refused until a key exists; the ledger holds only ciphertext that the admin key opens and another key does not; a sealed post spends the round nullifier like a public one, non-members are refused, and follow-ups stay author-only; key rotation.
+- sealed reports: only the admin can publish the encryption key and never an empty one; sealed posts are refused until a key exists; the ledger holds only ciphertext that the admin key opens and another key does not; a sealed post spends the round nullifier like a public one, non-members are refused, and follow-ups stay author-only; key rotation; a private reply that only the anonymous author can open (not the admin key, not another member), with unrelated reply keys across reports.
 
 ## Build and run
 
@@ -95,8 +96,9 @@ npm run dev          # the browser demo at http://localhost:5173
 ## What changed in Wave 3 (late November)
 
 - **Sealed reports** (`setBoxKey`, `postSealed`, `sealedReports`): confidential reports that only the admin can read, posted with the same zero-knowledge membership proof and round limit as public ones. Encryption is client-side WebCrypto (X25519 key agreement, HKDF-SHA256, AES-256-GCM) in `src/crypto/seal.ts`, with no new dependencies. Follow-ups on a sealed report are sealed too.
+- **Private replies** (`src/crypto/envelope.ts`): the sealed envelope carries a one-off reply key, so the admin can answer through `respond` with a reply only the anonymous author can read. A two-way confidential channel with no identity behind it.
 - **Demo:** the admin can publish or rotate the encryption key; members get a "Confidential" option; everyone else sees only the ciphertext stored on chain, and the admin's view decrypts it locally.
-- 5 new contract tests (22 in total), compiled with Compact 0.36.0 in CI.
+- 6 new contract tests (23 in total), compiled with Compact 0.36.0 in CI.
 
 ## Roadmap
 

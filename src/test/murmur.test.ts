@@ -4,6 +4,7 @@ import { Sim, assertNotInPublicState, expectRejects } from './sim.js';
 import { Contract, ledger, pureCircuits, Status } from '../../contract/managed/murmur/contract/index.js';
 import { createMurmurPrivateState, type MurmurPrivateState, witnesses } from '../../contract/witnesses.js';
 import { generateBoxKeyPair, open, seal } from '../crypto/seal.js';
+import { openReply, openReport, sealReply, sealReport } from '../crypto/envelope.js';
 
 const newSecretKey = (): Uint8Array => crypto.getRandomValues(new Uint8Array(32));
 const memberKey = (sk: Uint8Array) => pureCircuits.memberKey(sk);
@@ -287,5 +288,33 @@ describe('Murmur: sealed reports', () => {
     expect(await open(sim.ledger().reports.lookup(a), k1)).toBe('before rotation');
     expect(await open(sim.ledger().reports.lookup(b), k2)).toBe('after rotation');
     await expect(open(sim.ledger().reports.lookup(b), k1)).rejects.toThrow();
+  });
+
+  it('gives the anonymous author a private reply channel: only they can read the admin answer', async () => {
+    const { sim, members } = await setup(3);
+    const admin = await generateBoxKeyPair();
+    await as(sim, ADMIN_SK).call('setBoxKey', admin.publicKey);
+    // The author seals the report with a one-off reply key kept on their device.
+    const { sealed, replyKeys } = await sealReport(SECRET, sim.ledger().adminBoxKey);
+    const { result: id } = await as(sim, members[1]).call('postSealed', sealed);
+    // The admin opens it and learns the text and the reply key, not the author.
+    const opened = await openReport(sim.ledger().reports.lookup(id), admin);
+    expect(opened.text).toBe(SECRET);
+    expect(opened.replyKey).toEqual(replyKeys.publicKey);
+    // The admin answers through the normal respond circuit, sealed to the reply key.
+    const answer = 'Escalated to compliance; the log change was reverted.';
+    await as(sim, ADMIN_SK).call('respond', id, Status.ACKNOWLEDGED, await sealReply(answer, opened.replyKey!));
+    const stored = sim.ledger().replies.lookup(id);
+    expect(stored).not.toContain('compliance');
+    // Only the author's reply key opens it: not the admin key, not another member's key.
+    expect(await openReply(stored, replyKeys)).toBe(answer);
+    await expect(openReply(stored, admin)).rejects.toThrow();
+    await expect(openReply(stored, await generateBoxKeyPair())).rejects.toThrow();
+    // A fresh reply key per report: two sealed reports carry unrelated reply keys.
+    await as(sim, ADMIN_SK).call('nextRound');
+    const second = await sealReport('second', sim.ledger().adminBoxKey);
+    const { result: id2 } = await as(sim, members[1]).call('postSealed', second.sealed);
+    const opened2 = await openReport(sim.ledger().reports.lookup(id2), admin);
+    expect(opened2.replyKey).not.toEqual(opened.replyKey);
   });
 });
