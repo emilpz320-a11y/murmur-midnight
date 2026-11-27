@@ -318,3 +318,87 @@ describe('Murmur: sealed reports', () => {
     expect(opened2.replyKey).not.toEqual(opened.replyKey);
   });
 });
+
+describe('Murmur: member key rotation', () => {
+  /** The member rotates on their own device; their wallet now holds the new secret. */
+  const rotate = async (sim: MurmurSim, sk: Uint8Array) => {
+    const out = await as(sim, sk).call('rotateKey');
+    const state = walletOf(sk);
+    wallets.set(hex(state.secretKey), state);
+    // A stale copy of the old secret (an old device, a leak) starts from scratch.
+    wallets.delete(hex(sk));
+    return { ...out, next: state.secretKey, state };
+  };
+
+  it('replaces a member key without publishing anything that links the old key to the new one', async () => {
+    const { sim, members } = await setup(3);
+    await as(sim, members[1]).call('post', 'written with the old key');
+    const { ledger: l, next, state } = await rotate(sim, members[1]);
+    // The private state switched to a fresh secret, bound to when it was created.
+    expect(hex(next)).not.toBe(hex(members[1]));
+    expect(state.origin).toEqual({ rotated: true, sinceRound: 0n, sinceReport: 1n });
+    expect(state.pastKeys.map((k) => hex(k.secretKey))).toEqual([hex(members[1])]);
+    expect(state.authored).toEqual([0n]);
+    // Public: one more leaf and one retired tag; the member count and enrolment list are unchanged.
+    expect(l.rotations).toBe(1n);
+    expect(l.memberCount).toBe(3n);
+    const newLeaf = pureCircuits.rotatedMemberKey(next, new Uint8Array(32), Uint8Array.of(1, ...new Uint8Array(31)));
+    expect(l.members.findPathForLeaf(newLeaf)).toBeDefined();
+    expect(l.memberKeys.member(newLeaf)).toBe(false);
+    // The tag is a hash of the old secret: it matches no enrolled member key.
+    const tag = hex(l.retiredTags[0]);
+    for (const sk of members) expect(tag).not.toBe(hex(memberKey(sk)));
+    expect(l.retiredTags.slice(1).every((t) => t.every((b) => b === 0))).toBe(true);
+    assertNotInPublicState(l, { old: members[1], next, m0: members[0], m2: members[2], admin: ADMIN_SK });
+  });
+
+  it('retires the old key: it can no longer rotate, post or endorse', async () => {
+    const { sim, members } = await setup(2);
+    await as(sim, members[0]).call('post', 'report');
+    const old = members[1];
+    await rotate(sim, old);
+    await as(sim, ADMIN_SK).call('nextRound');
+    await expectRejects(() => as(sim, old).call('rotateKey'), 'rotated out');
+    await expectRejects(() => as(sim, old).call('post', 'with a stale key'), 'rotated out');
+    await expectRejects(() => as(sim, old).call('endorse', 0n), 'rotated out');
+    expect(sim.ledger().rotations).toBe(1n);
+  });
+
+  it('lets the new key post from the next round, and never twice per round or per endorsement', async () => {
+    const { sim, members } = await setup(3);
+    await as(sim, members[0]).call('post', 'before the rotation');
+    await as(sim, members[1]).call('endorse', 0n);
+    const { next } = await rotate(sim, members[1]);
+    // No second post in the rotation round, no second endorsement of an older report.
+    await expectRejects(() => as(sim, next).call('post', 'again this round'), 'from the next round');
+    await expectRejects(() => as(sim, next).call('endorse', 0n), 'posted after the rotation');
+    await as(sim, ADMIN_SK).call('nextRound');
+    const { result: id } = await as(sim, next).call('post', 'written with the new key');
+    expect(sim.ledger().reports.lookup(id)).toBe('written with the new key');
+    await expectRejects(() => as(sim, next).call('post', 'twice'), 'Already posted this round');
+    const { result: other } = await as(sim, members[2]).call('post', 'a newer report');
+    const { ledger: l } = await as(sim, next).call('endorse', other);
+    expect(l.endorsements.lookup(other)).toBe(1n);
+    expect(walletOf(next).authored).toEqual([id]);
+    expect(walletOf(next).endorsed).toEqual([0n, other]);
+    // The new key can rotate in turn.
+    const { ledger: l2 } = await rotate(sim, next);
+    expect(l2.rotations).toBe(2n);
+  });
+
+  it('keeps follow-ups working for reports written with a retired key, for the author only', async () => {
+    const { sim, members } = await setup(2);
+    const { result: id } = await as(sim, members[0]).call('post', 'old report');
+    const { next } = await rotate(sim, members[0]);
+    await expectRejects(() => as(sim, members[1]).call('followUp', id, 'not mine'), 'Only the author');
+    const { ledger: l } = await as(sim, next).call('followUp', id, 'Still happening after I rotated.');
+    expect(l.followUps.lookup(id)).toBe('Still happening after I rotated.');
+  });
+
+  it('refuses rotation from someone who is not a member', async () => {
+    const { sim } = await setup(2);
+    await expectRejects(() => as(sim, newSecretKey()).call('rotateKey'), 'not enrolled');
+    await expectRejects(() => as(sim, ADMIN_SK).call('rotateKey'), 'not enrolled');
+    expect(sim.ledger().rotations).toBe(0n);
+  });
+});
