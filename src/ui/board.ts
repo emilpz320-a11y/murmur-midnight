@@ -92,6 +92,11 @@ export class Board {
     return this.sim.ledger().memberKeys.member(this.memberKey(p));
   }
 
+  /** How many times this person replaced their key (known only to their device). */
+  rotationsOf(p: PersonId): number {
+    return this.people[p].privateState.pastKeys.length;
+  }
+
   private async run<T>(p: PersonId, action: string, fn: () => Promise<T>, detail: (r: T) => string): Promise<boolean> {
     const who = this.people[p].name;
     this.sim.privateState = this.people[p].privateState;
@@ -195,6 +200,15 @@ export class Board {
     return this.run(by, 'next round', () => this.sim.call('nextRound'), (r) => `round is now ${r.ledger.round}`);
   }
 
+  /**
+   * Member self-rotation: prove membership with the current secret, retire it with
+   * an unlinkable tag, and add a leaf for a fresh secret made on this device.
+   */
+  rotateKey(p: PersonId) {
+    return this.run(p, 'rotate key', () => this.sim.call('rotateKey'), (r) =>
+      `old key retired (tag ${short(r.ledger.retiredTags[0])}), a new key added to the tree; nobody can tell which member rotated. The new key posts from the next round`);
+  }
+
   post(p: PersonId, text: string) {
     return this.run(p, 'post', () => this.sim.call('post', text), (r) => `report #${r.result} published anonymously`);
   }
@@ -217,9 +231,9 @@ export class Board {
   }
 
   /** What only this person's device knows: the reports they wrote and endorsed. */
-  privateView(p: PersonId): { authored: readonly bigint[]; endorsed: readonly bigint[] } {
-    const { authored, endorsed } = this.people[p].privateState;
-    return { authored, endorsed };
+  privateView(p: PersonId): { authored: readonly bigint[]; endorsed: readonly bigint[]; rotations: number; sinceRound: bigint } {
+    const { authored, endorsed, pastKeys, origin } = this.people[p].privateState;
+    return { authored, endorsed, rotations: pastKeys.length, sinceRound: origin.sinceRound };
   }
 
   get round(): bigint {
@@ -254,17 +268,19 @@ export class Board {
       sealedCount: [...l.sealedReports].length,
       memberKeys: [...l.memberKeys].map(short),
       nullifiers: [...l.nullifiers].map(short),
+      retiredTags: l.retiredTags.filter((t) => t.some((b) => b !== 0)).map(short),
+      rotations: l.rotations,
       round: l.round,
       reportCount: l.reportCount,
     };
   }
 
-  /** Searches the whole public ledger for each person's secret key. */
+  /** Searches the whole public ledger for each person's secret keys, current and retired. */
   privacyCheck(): { name: string; found: string | null }[] {
     const fields = collectPublicBytes(this.sim.ledger());
     return Object.values(this.people).map((p) => {
-      const secret = hex(p.secretKey);
-      const hit = fields.find((f) => hex(f.bytes).includes(secret));
+      const secrets = [p.privateState.secretKey, ...p.privateState.pastKeys.map((k) => k.secretKey)].map(hex);
+      const hit = fields.find((f) => secrets.some((s) => hex(f.bytes).includes(s)));
       return { name: p.name, found: hit ? hit.label : null };
     });
   }
@@ -280,6 +296,10 @@ function explain(message: string): string {
     'No such report',
     'This member key is not enrolled',
     'The admin has not published an encryption key',
+    'This key was rotated out',
+    'A new key can post from the next round',
+    'A new key can only endorse reports posted after the rotation',
+    'No key rotations left on this board',
   ];
   return known.find((k) => message.includes(k)) ?? message.slice(0, 160);
 }

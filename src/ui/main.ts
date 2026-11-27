@@ -24,7 +24,7 @@ async function act(fn: () => Promise<unknown>) {
 function renderPeople() {
   $('people').innerHTML = Object.values(board.people)
     .map((p) => {
-      const enrolled = p.id === 'admin' ? 'admin' : board.isEnrolled(p.id) ? 'member' : 'not enrolled';
+      const enrolled = p.id === 'admin' ? 'admin' : board.isEnrolled(p.id) ? (board.rotationsOf(p.id) ? 'member · new key' : 'member') : 'not enrolled';
       return `<button class="person${p.id === me ? ' active' : ''}" data-person="${p.id}">${esc(p.name)}<small>${enrolled}</small></button>`;
     })
     .join('');
@@ -38,6 +38,8 @@ function renderCompose() {
     <div class="row"><button class="act primary" data-do="post">Post anonymously</button>
     <label class="muted"><input type="checkbox" id="sealed" ${board.hasBoxKey ? '' : 'disabled'}> Confidential: seal it so only the admin can read it${board.hasBoxKey ? '' : ' (the admin has not published an encryption key yet)'}</label></div>
     <p class="muted">Your secret proves membership in zero knowledge; the board never learns which member you are. A sealed report is encrypted on this device before it is posted.</p>
+    ${me === 'admin' ? '' : `<div class="row"><button class="act" data-do="rotate">Rotate my key</button>
+      <span class="muted">Replace your secret with a fresh one. The old key stops working; nobody, the admin included, can link it to the new one. The new key can post from the next round.</span></div>`}
     <div class="private"><b>Only on ${esc(p.name)}'s device</b> (private state, never on chain):
       ${privateLine(me)}</div>`;
 }
@@ -45,7 +47,8 @@ function renderCompose() {
 function privateLine(p: PersonId): string {
   const v = board.privateView(p);
   const list = (ids: readonly bigint[]) => (ids.length ? ids.map((i) => `#${i}`).join(', ') : 'none');
-  return `wrote ${list(v.authored)} · endorsed ${list(v.endorsed)}`;
+  const key = v.rotations ? ` · key rotated ${v.rotations} time(s), current key valid from round ${v.sinceRound + 1n}` : '';
+  return `wrote ${list(v.authored)} · endorsed ${list(v.endorsed)}${key}`;
 }
 
 function renderReports() {
@@ -134,6 +137,8 @@ function renderPublic() {
     <ul class="plain mono">${v.memberKeys.map((k) => `<li>${k}</li>`).join('') || '<li class="empty">none</li>'}</ul>
     <p class="muted">Spent nullifiers (posts and endorsements; none matches a member key):</p>
     <ul class="plain mono">${v.nullifiers.map((k) => `<li>${k}</li>`).join('') || '<li class="empty">none</li>'}</ul>
+    <p class="muted">Retired key tags (${v.rotations} rotation(s); a tag matches no member key, so nobody can tell whose key it was):</p>
+    <ul class="plain mono">${v.retiredTags.map((k) => `<li>${k}</li>`).join('') || '<li class="empty">none</li>'}</ul>
     <p class="muted">Search the whole public ledger for each person's secret key:</p>
     <ul class="plain">${check
       .map((c) => `<li>${esc(c.name)}: ${c.found ? `<span class="bad">found at ${esc(c.found)}</span>` : '<span class="ok">not found</span>'}</li>`)
@@ -171,6 +176,9 @@ document.addEventListener('click', (ev) => {
       if (text) void act(() => (sealed ? board.postSealed(me, text) : board.post(me, text)));
       break;
     }
+    case 'rotate':
+      void act(() => board.rotateKey(me));
+      break;
     case 'endorse':
       void act(() => board.endorse(me, id));
       break;
