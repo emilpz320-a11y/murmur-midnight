@@ -2,11 +2,11 @@
 
 **Anonymous, verified feedback for teams, built on [Midnight](https://midnight.network).**
 
-Only enrolled members can post, and nobody, including the admin, can tell which member wrote a report. Each member can post once per round, endorse each report once, and follow up on their own reports later. The admin acknowledges and resolves reports in public.
+Only enrolled members can post, and nobody, including the admin, can tell which member wrote a report. Each member can post once per round, endorse each report once, follow up on their own reports later, and replace their own key without anyone being able to link the old key to the new one. The admin acknowledges and resolves reports in public.
 
 - **Live demo:** https://emilpz320-a11y.github.io/murmur-midnight/ (runs the compiled contract in your browser)
 - **Contract:** [`contract/murmur.compact`](contract/murmur.compact)
-- **Tests:** [`src/test/murmur.test.ts`](src/test/murmur.test.ts), 17 tests, run in CI on every push
+- **Tests:** [`src/test/murmur.test.ts`](src/test/murmur.test.ts), 28 tests, run in CI on every push
 - **Video (2:50):** [`docs/murmur-demo.mp4`](docs/murmur-demo.mp4) · **Slides:** [`docs/murmur-deck.pdf`](docs/murmur-deck.pdf)
 
 ## The problem
@@ -24,10 +24,11 @@ Midnight contracts have two kinds of state, and Murmur uses both:
 
 | Public ledger (on chain, visible to everyone) | Private state (only on the member's device) |
 |---|---|
-| The admin key, the member keys, a Merkle tree of member keys | Each person's 32-byte secret key |
+| The admin key, the member keys, a Merkle tree of member keys | Each person's 32-byte secret key, and where it came from (enrolment or a rotation) |
 | | The ids of the reports they wrote and endorsed (updated by witnesses) |
 | Reports, their round, status, endorsement count, follow-ups and admin replies | The Merkle path of their own member key (computed locally) |
-| Spent nullifiers, and one author tag per report | |
+| Spent nullifiers, and one author tag per report | Keys the member rotated away from, with the reports each one wrote |
+| Rotation tags of retired keys | |
 
 1. **Enrol.** Each member derives `memberKey = H("murmur:member", secret)` and gives it to the admin. The admin enrols it: it is added to the `members` Merkle tree. The secret never leaves the member's device.
 2. **Post.** The `post` circuit takes the secret from the private-state witness and proves in zero knowledge that `memberKey(secret)` is a leaf of the current members tree, without revealing which leaf. It publishes a nullifier `H("murmur:post", secret, round, contract)`. A second post in the same round produces the same nullifier and is rejected.
@@ -36,8 +37,22 @@ Midnight contracts have two kinds of state, and Murmur uses both:
 5. **Respond.** The admin, authenticated by `adminKey(secret)`, sets a report to acknowledged or resolved and adds a public reply.
 6. **Rounds.** The admin opens a new round, which gives every member one new post.
 7. **Private bookkeeping.** At the end of `post` and `endorse`, after every check has passed, the circuits call the witnesses `rememberAuthored(id)` and `rememberEndorsed(id)`. These update only the caller's private state. Because nothing public links a report or an endorsement to a member, the member's own device is the only place that knows which reports are theirs, which is what lets the app show "your reports" and "already endorsed" without revealing either. A refused call never returns its new private state, so it records nothing.
+8. **Rotate.** A member replaces their own key with `rotateKey`, with no help from the admin (see [Member self-rotation](#member-self-rotation)).
+
+### Member self-rotation
+
+A member may want a fresh key: a device was lost, the secret may have leaked, or they simply want the key the admin enrolled to stop mattering. `rotateKey` does this without the admin and without linking the two keys:
+
+- The circuit proves, with the old secret, that the caller's key is a leaf of the members tree (which leaf stays hidden, as for a post).
+- It publishes a **rotation tag** `H("murmur:rotate", oldSecret, contract)` in `retiredTags`. The tag matches no member key, so nobody, the admin included, can tell which member rotated.
+- It inserts a new leaf `H("murmur:rotated", newSecret, round, reportCount)`. The new secret is generated on the member's device by the `freshSecretKey` witness, and `adoptKey` switches the private state to it at the end, after every check has passed.
+- **The old key is dead.** Every membership proof (`post`, `postSealed`, `endorse`, `rotateKey`) checks inside the proof that the caller's own rotation tag is not among the published ones. The caller's tag is never disclosed, so this check links nothing either. A stale copy of the old secret can no longer post, endorse or rotate.
+- **Rotation never buys a second vote.** Nullifiers are derived from the secret, so a new key would otherwise start with fresh ones. The new leaf is bound to the round and report count at the time of rotation, and the proofs check it: the new key can post from the next round, and can endorse only reports posted after the rotation.
+- Follow-ups still work on reports written with a retired key: the private state keeps retired secrets with the reports each one wrote, and the `authorSecret` witness picks the right one.
 
 ### Circuits
+
+Nine exported circuits, plus pure helpers (`memberKey`, `rotatedMemberKey`, `rotationTag`, the nullifiers and the author tag). Every membership proof also checks that the caller's key has not been rotated out.
 
 | Circuit | Who | Checks |
 |---|---|---|
@@ -49,6 +64,7 @@ Midnight contracts have two kinds of state, and Murmur uses both:
 | `endorse(id)` | member | membership proof, report exists, report nullifier unused |
 | `followUp(id, text)` | author | report exists, caller reproduces the report's author tag |
 | `respond(id, status, text)` | admin | caller is the admin, report exists |
+| `rotateKey()` | member | membership proof, key not retired, rotations left (32 per board); retires the key and adds a fresh leaf |
 
 ## Privacy properties
 
@@ -61,17 +77,20 @@ What an observer of the chain can and cannot learn:
 - **Sealed reports hide the content too.** For sensitive cases a member encrypts the report on their own device to the admin's published X25519 key and posts it with `postSealed`. Only ciphertext reaches the ledger, and only the admin's private key, which never leaves the admin's device, opens it. A sealed post needs the same membership proof and spends the same once-per-round nullifier as a public one, so it is exactly as anonymous. Each report uses a fresh ephemeral key, so two sealed reports share nothing either.
 - **The admin can answer a sealed report privately, without learning who wrote it.** The sealed envelope carries a one-off reply key whose private half stays on the author's device. The admin's answer goes through the normal `respond` circuit, sealed to that key, so only the anonymous author can read it; observers and other members see ciphertext, and a fresh reply key per report links nothing (`src/crypto/envelope.ts`).
 
+- **A key rotation cannot be linked to the member who rotated, or the old key to the new one.** The only values a rotation publishes are a rotation tag (a hash of the old secret) and the new leaf (a hash of the new secret); neither matches an enrolled member key (`replaces a member key without publishing anything that links the old key to the new one`).
+
 Known limits, stated plainly:
 
 - The text of a public report can identify its author ("as the only person on night shift..."). Murmur hides the sender; for content that should not be public, use a sealed report, which the admin can still read.
 - The `sealedReports` set is public: observers can see that a report is sealed (not what it says or who wrote it).
 - With very few members, or one active member in a round, anonymity is weak. The anonymity set is the enrolled members.
 - Timing: whoever submits a transaction is visible to the network layer unless it is relayed. A production deployment would relay transactions.
+- Key rotation is capped at 32 per board, because every membership proof scans the full list of retired tags. A new key waits for the next round to post and cannot endorse reports that existed before the rotation; that is the price of never allowing a second post or endorsement. A retired key can still add follow-ups to the reports it wrote, as before the rotation. With few members, the timing of a rotation narrows down who rotated.
 - A member can endorse their own report. That costs them their one endorsement on that report and is not worth more than any other member's endorsement.
 
 ## Tests
 
-`npm test` runs the contract in Midnight's in-memory simulator (compact-runtime, no proof server). Each test keeps one private state per person across calls, as a wallet would. The 23 tests cover:
+`npm test` runs the contract in Midnight's in-memory simulator (compact-runtime, no proof server). Each test keeps one private state per person across calls, as a wallet would. The 28 tests cover:
 
 - deploy and enrolment, duplicate enrolment, non-admin enrolment and non-admin round changes;
 - posting, posting by a non-member, one post per round and a new post after the next round;
@@ -80,7 +99,8 @@ Known limits, stated plainly:
 - admin responses (acknowledge, resolve, unknown report, non-admin refused);
 - private bookkeeping: a post or endorsement is recorded only in the caller's private state, a refused call records nothing, and an author can find and follow up on their own reports from private state alone;
 - the three privacy properties above;
-- sealed reports: only the admin can publish the encryption key and never an empty one; sealed posts are refused until a key exists; the ledger holds only ciphertext that the admin key opens and another key does not; a sealed post spends the round nullifier like a public one, non-members are refused, and follow-ups stay author-only; key rotation; a private reply that only the anonymous author can open (not the admin key, not another member), with unrelated reply keys across reports.
+- sealed reports: only the admin can publish the encryption key and never an empty one; sealed posts are refused until a key exists; the ledger holds only ciphertext that the admin key opens and another key does not; a sealed post spends the round nullifier like a public one, non-members are refused, and follow-ups stay author-only; key rotation; a private reply that only the anonymous author can open (not the admin key, not another member), with unrelated reply keys across reports;
+- member key rotation: a rotation publishes nothing that links the old key to the new one; the old key can no longer rotate, post or endorse; the new key posts from the next round, once per round, and endorses only newer reports; follow-ups on reports written with the retired key keep working for the author only; non-members and the admin cannot rotate.
 
 ## Build and run
 
@@ -98,12 +118,12 @@ npm run dev          # the browser demo at http://localhost:5173
 - **Sealed reports** (`setBoxKey`, `postSealed`, `sealedReports`): confidential reports that only the admin can read, posted with the same zero-knowledge membership proof and round limit as public ones. Encryption is client-side WebCrypto (X25519 key agreement, HKDF-SHA256, AES-256-GCM) in `src/crypto/seal.ts`, with no new dependencies. Follow-ups on a sealed report are sealed too.
 - **Private replies** (`src/crypto/envelope.ts`): the sealed envelope carries a one-off reply key, so the admin can answer through `respond` with a reply only the anonymous author can read. A two-way confidential channel with no identity behind it.
 - **Demo:** the admin can publish or rotate the encryption key; members get a "Confidential" option; everyone else sees only the ciphertext stored on chain, and the admin's view decrypts it locally.
-- 6 new contract tests (23 in total), compiled with Compact 0.36.0 in CI.
+- **Member self-rotation** (`rotateKey`, `retiredTags`): a member replaces their own key. The old key is retired with an unlinkable tag and stops working, checked inside every membership proof, and the new key is bound to the round and report count so a rotation never yields a second post or endorsement. The demo has a "Rotate my key" button.
+- 11 new contract tests (28 in total), compiled with Compact 0.36.0 in CI.
 
 ## Roadmap
 
 - Deploy to the Midnight Preprod network and connect the demo to the Lace wallet, so members post from their own wallets with real proofs.
-- Member self-rotation: replace your key without the admin learning the old-new link.
 - Several boards per organisation, with one enrolment.
 
 ## Credits
