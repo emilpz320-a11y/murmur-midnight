@@ -31,7 +31,7 @@
     { "op": "cond_select", "output": "%t.15", "bit": "%t.14", "a": "0x00", "b": "0x01" },
     { "op": "assert", "cond": "%t.15" },
     { "op": "impact", "guard": "0x01", "inputs": ["0x70", "0x01", "0x01", "0x01"] },
-    { "op": "impact", "guard": "0x01", "inputs": ["0x10", "0x01", "0x01", "0x01", "0x0d"] },
+    { "op": "impact", "guard": "0x01", "inputs": ["0x10", "0x01", "0x01", "0x01", "0x0b"] },
     { "op": "impact", "guard": "0x01", "inputs": ["0x11", "0x01", "0x01", "0x20", "%key.0", "%key.1"] },
     { "op": "impact", "guard": "0x01", "inputs": ["0x91"] },
     { "op": "impact", "guard": "0x01", "inputs": ["0xa1"] }

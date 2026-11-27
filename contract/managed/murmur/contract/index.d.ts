@@ -2,6 +2,11 @@ import type * as __compactRuntime from '@midnight-ntwrk/compact-runtime';
 
 export enum Status { OPEN = 0, ACKNOWLEDGED = 1, RESOLVED = 2 }
 
+export type KeyOrigin = { rotated: boolean;
+                          sinceRound: bigint;
+                          sinceReport: bigint
+                        };
+
 export type Witnesses<PS> = {
   secretKey(context: __compactRuntime.WitnessContext<Ledger, PS>): [PS, Uint8Array];
   memberPath(context: __compactRuntime.WitnessContext<Ledger, PS>,
@@ -14,6 +19,14 @@ export type Witnesses<PS> = {
                    id_0: bigint): [PS, []];
   rememberEndorsed(context: __compactRuntime.WitnessContext<Ledger, PS>,
                    id_0: bigint): [PS, []];
+  keyOrigin(context: __compactRuntime.WitnessContext<Ledger, PS>): [PS, KeyOrigin];
+  authorSecret(context: __compactRuntime.WitnessContext<Ledger, PS>,
+               id_0: bigint): [PS, Uint8Array];
+  freshSecretKey(context: __compactRuntime.WitnessContext<Ledger, PS>): [PS, Uint8Array];
+  adoptKey(context: __compactRuntime.WitnessContext<Ledger, PS>,
+           sk_0: Uint8Array,
+           sinceRound_0: bigint,
+           sinceReport_0: bigint): [PS, []];
 }
 
 export type ImpureCircuits<PS> = {
@@ -30,6 +43,7 @@ export type ImpureCircuits<PS> = {
           id_0: bigint,
           status_0: Status,
           text_0: string): Promise<__compactRuntime.CircuitResults<PS, []>>;
+  rotateKey(context: __compactRuntime.CircuitContext<PS>): Promise<__compactRuntime.CircuitResults<PS, []>>;
 }
 
 export type ProvableCircuits<PS> = {
@@ -46,11 +60,16 @@ export type ProvableCircuits<PS> = {
           id_0: bigint,
           status_0: Status,
           text_0: string): Promise<__compactRuntime.CircuitResults<PS, []>>;
+  rotateKey(context: __compactRuntime.CircuitContext<PS>): Promise<__compactRuntime.CircuitResults<PS, []>>;
 }
 
 export type PureCircuits = {
   adminKey(sk_0: Uint8Array): Uint8Array;
   memberKey(sk_0: Uint8Array): Uint8Array;
+  rotatedMemberKey(sk_0: Uint8Array,
+                   sinceRound_0: Uint8Array,
+                   sinceReport_0: Uint8Array): Uint8Array;
+  rotationTag(sk_0: Uint8Array, instance_0: Uint8Array): Uint8Array;
   postNullifier(sk_0: Uint8Array, rnd_0: Uint8Array, instance_0: Uint8Array): Uint8Array;
   endorseNullifier(sk_0: Uint8Array, id_0: Uint8Array, instance_0: Uint8Array): Uint8Array;
   authorTag(sk_0: Uint8Array, id_0: Uint8Array, instance_0: Uint8Array): Uint8Array;
@@ -59,6 +78,13 @@ export type PureCircuits = {
 export type Circuits<PS> = {
   adminKey(context: __compactRuntime.CircuitContext<PS>, sk_0: Uint8Array): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
   memberKey(context: __compactRuntime.CircuitContext<PS>, sk_0: Uint8Array): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
+  rotatedMemberKey(context: __compactRuntime.CircuitContext<PS>,
+                   sk_0: Uint8Array,
+                   sinceRound_0: Uint8Array,
+                   sinceReport_0: Uint8Array): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
+  rotationTag(context: __compactRuntime.CircuitContext<PS>,
+              sk_0: Uint8Array,
+              instance_0: Uint8Array): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
   postNullifier(context: __compactRuntime.CircuitContext<PS>,
                 sk_0: Uint8Array,
                 rnd_0: Uint8Array,
@@ -84,6 +110,7 @@ export type Circuits<PS> = {
           id_0: bigint,
           status_0: Status,
           text_0: string): Promise<__compactRuntime.CircuitResults<PS, []>>;
+  rotateKey(context: __compactRuntime.CircuitContext<PS>): Promise<__compactRuntime.CircuitResults<PS, []>>;
 }
 
 export type Ledger = {
@@ -167,6 +194,8 @@ export type Ledger = {
     member(elem_0: bigint): boolean;
     [Symbol.iterator](): Iterator<bigint>
   };
+  readonly retiredTags: Uint8Array[];
+  readonly rotations: bigint;
 }
 
 export declare class Contract<PS = any, W extends Witnesses<PS> = Witnesses<PS>> {
